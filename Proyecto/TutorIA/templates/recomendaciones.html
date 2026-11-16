@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block titulo %}Tu plan{% endblock %}
+{% block contenido %}
+
+<div class="encabezado">
+    <div>
+        <p class="ceja">Tu plan de estudio</p>
+        <h1>{{ tema | bonito }}</h1>
+    </div>
+    <div class="chips">
+        <span class="chip chip-azul">{{ materia | bonito }}</span>
+        <span class="chip">{{ nivel | bonito }}</span>
+    </div>
+</div>
+
+{% if ejercicios %}
+<div class="rejilla tres-columnas">
+    <div class="tarjeta kpi">
+        <span class="suave pequeno">Tiempo del plan</span>
+        <span class="kpi-valor">{{ tiempo_total }} <span class="suave" style="font-size: 18px">de {{ tiempo_disponible }} min</span></span>
+        <div class="linea-tiempo">
+            {% for e in ejercicios %}
+            <div style="width: {{ e['tiempo'] / tiempo_disponible * 100 }}%; background: {{ ['#3b6ea8', '#d9622b', '#2f855a', '#b7791f'][loop.index0 % 4] }}"></div>
+            {% endfor %}
+        </div>
+    </div>
+    <div class="tarjeta kpi">
+        <span class="suave pequeno">Ejercicios elegidos</span>
+        <span class="kpi-valor">{{ ejercicios | length }}</span>
+        <span class="kpi-meta">Los que más aportan en tu tiempo</span>
+    </div>
+    <div class="tarjeta kpi">
+        <span class="suave pequeno">Beneficio total</span>
+        <span class="kpi-valor">{{ beneficio_total | round(2) }}</span>
+        <span class="kpi-meta">Calculado con la mochila 0/1</span>
+    </div>
+</div>
+
+<section class="seccion">
+    <div class="titulo-seccion"><h2>Ejercicios en orden</h2></div>
+    <div class="rejilla">
+        {% for e in ejercicios %}
+        <article class="tarjeta ejercicio">
+            <div class="ejercicio-numero">{{ loop.index }}</div>
+            <div>
+                <h3>{{ e["nombre"] }}</h3>
+                <p class="ejercicio-texto">{{ e["ejercicio"] }}</p>
+                <div class="chips">
+                    <span class="chip chip-azul">{{ e["subtema"] | bonito }}</span>
+                    <span class="chip">{{ e["tiempo"] }} min</span>
+                    <span class="chip chip-naranja">Beneficio {{ e["beneficio"] | round(2) }}</span>
+                </div>
+            </div>
+        </article>
+        {% endfor %}
+    </div>
+</section>
+{% else %}
+<section class="tarjeta vacio">
+    <h2>No cupo ningún ejercicio</h2>
+    <p>Con el tiempo elegido no alcanza para un ejercicio completo. Vuelve y elige más minutos.</p>
+</section>
+{% endif %}
+
+<div class="acciones">
+    <a class="boton boton-oscuro" href="{{ url_for('progreso') }}">Ver mi progreso</a>
+    <a class="boton boton-claro" href="{{ url_for('inicio') }}">Nueva evaluación</a>
+</div>
+
+{% endblock %}

@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block titulo %}Resultados{% endblock %}
+{% block contenido %}
+
+<div class="encabezado">
+    <div>
+        <p class="ceja">Resultados</p>
+        <h1>{{ tema | bonito }}</h1>
+    </div>
+    <div class="chips">
+        <span class="chip chip-azul">{{ materia | bonito }}</span>
+        <span class="chip">{{ nivel | bonito }}</span>
+    </div>
+</div>
+
+<div class="rejilla dos-columnas">
+    <section class="tarjeta" style="display: flex; gap: 28px; align-items: center">
+        {% set circunferencia = 439.8 %}
+        <div class="anillo">
+            <svg width="160" height="160" viewBox="0 0 160 160" aria-hidden="true">
+                <circle cx="80" cy="80" r="70" fill="none" stroke="#ece8df" stroke-width="14"/>
+                <circle cx="80" cy="80" r="70" fill="none"
+                        stroke="{{ '#2f855a' if porcentaje >= 75 else ('#b7791f' if porcentaje >= 50 else '#c0392b') }}"
+                        stroke-width="14" stroke-linecap="round"
+                        stroke-dasharray="{{ circunferencia }}"
+                        stroke-dashoffset="{{ circunferencia * (1 - porcentaje / 100) }}"/>
+            </svg>
+            <div class="anillo-texto"><div><strong>{{ porcentaje | round(0) | int }}%</strong><span class="suave pequeno">de acierto</span></div></div>
+        </div>
+        <div>
+            <h2>{{ puntaje }} de {{ total }} correctas</h2>
+            <p class="suave">
+                {% if porcentaje >= 75 %}Muy bien: dominas buena parte del tema.
+                {% elif porcentaje >= 50 %}Vas por buen camino; el plan te ayuda a reforzar lo que falta.
+                {% else %}Este tema necesita refuerzo. El plan prioriza tus subtemas más débiles.{% endif %}
+            </p>
+        </div>
+    </section>
+
+    <section class="tarjeta tarjeta-oscura">
+        <h2>Crea tu plan de estudio</h2>
+        <p class="suave pequeno" style="margin-bottom: 16px">Elige cuántos minutos tienes. El sistema escoge los ejercicios que más te ayudan sin pasarse del tiempo.</p>
+        <form action="{{ url_for('recomendacion') }}" method="POST"
+              data-cargando="Armando tu plan" data-detalle="La IA crea los ejercicios y el algoritmo de la mochila elige los mejores para tu tiempo.">
+            <div class="tiempos">
+                {% for minutos in [20, 30, 40, 60] %}
+                <label class="tiempo">
+                    <input type="radio" name="tiempo_disponible" value="{{ minutos }}" required {{ 'checked' if minutos == 30 }}>
+                    <span style="color: var(--tinta)">{{ minutos }} min</span>
+                </label>
+                {% endfor %}
+            </div>
+            <button class="boton boton-principal" type="submit" style="width: 100%; margin-top: 16px">Obtener mi plan</button>
+        </form>
+    </section>
+</div>
+
+<section class="seccion">
+    <div class="titulo-seccion">
+        <div>
+            <h2>Dominio por subtema</h2>
+            <p class="suave pequeno">Estimado con BKT. La raya negra marca dónde estabas antes de esta evaluación.</p>
+        </div>
+    </div>
+    <div class="rejilla dos-columnas">
+        {% for subtema, dominio in dominios_bkt.items() %}
+        {% set antes = dominios_anteriores[subtema] %}
+        <div class="tarjeta dominio">
+            <div class="dominio-fila">
+                <h3>{{ subtema | bonito }}</h3>
+                <strong>{{ (dominio * 100) | round(0) | int }}%</strong>
+            </div>
+            <div class="barra-fondo">
+                <div class="barra-valor" data-valor="{{ dominio * 100 }}"></div>
+                <div class="barra-antes" style="left: {{ (antes if antes is not none else 0.5) * 100 }}%"></div>
+            </div>
+            <p class="suave pequeno">
+                {% if antes is none %}Primera vez: arrancó en 50%.
+                {% else %}
+                    {% set cambio = (dominio - antes) * 100 %}
+                    Antes {{ (antes * 100) | round(0) | int }}%,
+                    {% if cambio >= 0 %}<span style="color: var(--verde); font-weight: 600">subió {{ cambio | round(0) | int }} puntos</span>
+                    {% else %}<span style="color: var(--rojo); font-weight: 600">bajó {{ (-cambio) | round(0) | int }} puntos</span>{% endif %}
+                {% endif %}
+            </p>
+        </div>
+        {% endfor %}
+    </div>
+</section>
+
+<section class="seccion">
+    <div class="titulo-seccion"><h2>Revisa tus respuestas</h2></div>
+    {% for r in resultados %}
+    <details class="revision" {{ 'open' if not r["es_correcta"] and loop.index <= 3 }}>
+        <summary>
+            <span class="marca {{ 'marca-bien' if r['es_correcta'] else 'marca-mal' }}">{{ '✓' if r['es_correcta'] else '✗' }}</span>
+            <span style="flex: 1">{{ loop.index }}. {{ r["pregunta"] }}</span>
+            <span class="chip">{{ r["subtema"] | bonito }}</span>
+        </summary>
+        <p class="pequeno">
+            {% if r["respuesta"] %}Tu respuesta: <strong>{{ r["opciones"][r["respuesta"] | int - 1] }}</strong><br>{% endif %}
+            {% if not r["es_correcta"] %}Respuesta correcta: <strong style="color: var(--verde)">{{ r["opciones"][r["correcta"] | int - 1] }}</strong>{% endif %}
+        </p>
+    </details>
+    {% endfor %}
+</section>
+
+<div class="acciones">
+    <a class="boton boton-claro" href="{{ url_for('progreso') }}">Ver mi progreso</a>
+    <a class="boton boton-claro" href="{{ url_for('inicio') }}">Nueva evaluación</a>
+</div>
+
+{% endblock %}

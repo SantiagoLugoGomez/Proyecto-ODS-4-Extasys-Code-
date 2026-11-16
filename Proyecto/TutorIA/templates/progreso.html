@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block titulo %}Mi progreso{% endblock %}
+{% block contenido %}
+<div class="encabezado">
+    <div>
+        <p class="ceja">Mi progreso</p>
+        <h1>{{ nombre }}</h1>
+        <p class="suave">{{ colegio }} · Curso {{ curso }} · Lista {{ numero_lista }}</p>
+    </div>
+    <a class="boton boton-principal" href="{{ url_for('inicio') }}">Nueva evaluación</a>
+</div>
+{% include "_progreso_detalle.html" %}
+{% endblock %}

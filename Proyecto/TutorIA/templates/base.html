@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block titulo %}TutorIA{% endblock %} · TutorIA</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/estilos.css') }}">
+</head>
+<body>
+
+<header class="barra">
+    <div class="barra-interior">
+        <a class="logo" href="{{ url_for('inicio') }}">
+            <span class="logo-marca">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M2 9l10-5 10 5-10 5z"/>
+                    <path d="M6 11v5c3 2.5 9 2.5 12 0v-5"/>
+                </svg>
+            </span>
+            TutorIA
+        </a>
+        <span class="sello">Funciona sin Internet</span>
+        <nav class="navegacion">
+            {% if session.get('docente_id') %}
+                <a href="{{ url_for('docente_panel') }}" class="{{ 'activo' if request.path.startswith('/docente') }}">Panel docente</a>
+                <a href="{{ url_for('docente_salir') }}">Cerrar sesión</a>
+            {% else %}
+                <a href="{{ url_for('inicio') }}" class="{{ 'activo' if request.path == '/' }}">Inicio</a>
+                {% if session.get('estudiante_id') %}
+                    <a href="{{ url_for('progreso') }}" class="{{ 'activo' if request.path == '/progreso' }}">Mi progreso</a>
+                    <a href="{{ url_for('salir') }}">Salir</a>
+                {% endif %}
+                <a href="{{ url_for('docente_acceso') }}">Soy docente</a>
+            {% endif %}
+        </nav>
+    </div>
+</header>
+
+<main class="contenedor">
+    {% block contenido %}{% endblock %}
+</main>
+
+<div class="cargando" id="cargando">
+    <div>
+        <div class="giro"></div>
+        <h2 id="cargando-titulo">Un momento</h2>
+        <p class="pequeno" id="cargando-texto">La IA está trabajando en tu computador.</p>
+    </div>
+</div>
+
+<script>
+    document.querySelectorAll("form[data-cargando]").forEach(function (formulario) {
+        formulario.addEventListener("submit", function () {
+            document.getElementById("cargando-titulo").textContent = formulario.dataset.cargando;
+            if (formulario.dataset.detalle) {
+                document.getElementById("cargando-texto").textContent = formulario.dataset.detalle;
+            }
+            document.getElementById("cargando").classList.add("visible");
+        });
+    });
+
+    document.querySelectorAll(".barra-valor[data-valor]").forEach(function (barra) {
+        var valor = parseFloat(barra.dataset.valor);
+        barra.classList.add(valor < 50 ? "bajo" : valor < 75 ? "medio" : "alto");
+        requestAnimationFrame(function () {
+            barra.style.width = valor + "%";
+        });
+    });
+
+    window.addEventListener("pageshow", function () {
+        document.getElementById("cargando").classList.remove("visible");
+    });
+</script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

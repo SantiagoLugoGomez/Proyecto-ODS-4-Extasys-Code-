@@ -1,0 +1,109 @@
+{% set notas = historial | map(attribute=5) | list %}
+<div class="rejilla cuatro-columnas">
+    <div class="tarjeta kpi">
+        <span class="suave pequeno">Evaluaciones</span>
+        <span class="kpi-valor">{{ notas | length }}</span>
+    </div>
+    <div class="tarjeta kpi">
+        <span class="suave pequeno">Acierto promedio</span>
+        <span class="kpi-valor">{{ ((notas | sum) / (notas | length)) | round(0) | int if notas else "–" }}{{ "%" if notas }}</span>
+    </div>
+    <div class="tarjeta kpi">
+        <span class="suave pequeno">Última evaluación</span>
+        <span class="kpi-valor">{{ notas[0] | round(0) | int if notas else "–" }}{{ "%" if notas }}</span>
+    </div>
+    <div class="tarjeta kpi">
+        <span class="suave pequeno">Mejora desde la primera</span>
+        {% if notas | length >= 2 %}
+            {% set mejora = notas[0] - notas[-1] %}
+            <span class="kpi-valor {{ 'kpi-ok' if mejora >= 0 else 'kpi-bajo' }}">{{ "+" if mejora >= 0 }}{{ mejora | round(0) | int }}</span>
+            <span class="kpi-meta">puntos porcentuales</span>
+        {% else %}
+            <span class="kpi-valor">–</span>
+            <span class="kpi-meta">Se calcula con 2 evaluaciones</span>
+        {% endif %}
+    </div>
+</div>
+
+<section class="seccion">
+    <div class="titulo-seccion">
+        <div>
+            <h2>Dominio actual por subtema</h2>
+            <p class="suave pequeno">Rojo: menos de 50%. Amarillo: entre 50% y 75%. Verde: 75% o más.</p>
+        </div>
+    </div>
+    {% if dominios %}
+    <div class="rejilla dos-columnas">
+        {% for grupo in dominios | groupby("tema") %}
+        <div class="tarjeta dominio" style="gap: 14px">
+            <div class="dominio-fila">
+                <h3>{{ grupo.grouper | bonito }}</h3>
+                <span class="chip chip-azul">{{ grupo.list[0]["materia"] | bonito }}</span>
+            </div>
+            {% for d in grupo.list %}
+            <div class="dominio">
+                <div class="dominio-fila pequeno"><span>{{ d["subtema"] | bonito }}</span><strong>{{ (d["dominio"] * 100) | round(0) | int }}%</strong></div>
+                <div class="barra-fondo"><div class="barra-valor" data-valor="{{ d['dominio'] * 100 }}"></div></div>
+            </div>
+            {% endfor %}
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="tarjeta vacio">Todavía no hay evaluaciones registradas.</div>
+    {% endif %}
+</section>
+
+{% if evolucion %}
+<section class="seccion">
+    <div class="titulo-seccion">
+        <div>
+            <h2>Cómo ha cambiado el dominio</h2>
+            <p class="suave pequeno">Cada punto es una evaluación.</p>
+        </div>
+    </div>
+    <div class="rejilla tres-columnas">
+        {% for g in evolucion %}
+        {% set valores = g["registros"] | map(attribute="dominio") | list %}
+        <div class="tarjeta">
+            <div class="dominio-fila pequeno" style="margin-bottom: 10px">
+                <strong>{{ g["subtema"] | bonito }}</strong>
+                <span class="suave">{{ g["tema"] | bonito }}</span>
+            </div>
+            <div class="mini">
+                <svg width="100%" height="56" viewBox="-4 -4 168 56" preserveAspectRatio="none" aria-label="Evolución del dominio">
+                    <line x1="0" y1="24" x2="160" y2="24" stroke="#ece8df" stroke-dasharray="4 4"/>
+                    <polyline points="{{ valores | puntos }}"/>
+                </svg>
+            </div>
+            <p class="suave pequeno">{{ (valores[0] * 100) | round(0) | int }}% → <strong style="color: var(--tinta)">{{ (valores[-1] * 100) | round(0) | int }}%</strong> en {{ valores | length }} {{ "registro" if valores | length == 1 else "registros" }}</p>
+        </div>
+        {% endfor %}
+    </div>
+</section>
+{% endif %}
+
+<section class="seccion">
+    <div class="titulo-seccion"><h2>Historial de evaluaciones</h2></div>
+    <div class="tarjeta tabla-envoltura" style="padding: 8px 16px">
+        {% if historial %}
+        <table>
+            <thead><tr><th>Fecha</th><th>Materia</th><th>Tema</th><th>Nivel</th><th class="numero">Puntaje</th><th class="numero">Acierto</th></tr></thead>
+            <tbody>
+            {% for r in historial %}
+            <tr>
+                <td class="suave">{{ r[6][:16] }}</td>
+                <td>{{ r[0] | bonito }}</td>
+                <td>{{ r[1] | bonito }}</td>
+                <td>{{ r[2] | bonito }}</td>
+                <td class="numero">{{ r[3] }} / {{ r[4] }}</td>
+                <td class="numero"><span class="chip {{ 'chip-verde' if r[5] >= 75 else ('chip-amarillo' if r[5] >= 50 else 'chip-rojo') }}">{{ r[5] | round(0) | int }}%</span></td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="vacio">Sin evaluaciones todavía.</p>
+        {% endif %}
+    </div>
+</section>

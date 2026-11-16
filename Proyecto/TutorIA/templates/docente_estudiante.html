@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block titulo %}{{ nombre }}{% endblock %}
+{% block contenido %}
+<div class="encabezado">
+    <div>
+        <p class="ceja">Detalle del estudiante</p>
+        <h1>{{ nombre }}</h1>
+        <p class="suave">{{ colegio }} · Curso {{ curso }} · Lista {{ numero_lista }}</p>
+    </div>
+    <a class="boton boton-claro" href="{{ url_for('docente_panel', curso=curso) }}">← Volver al curso {{ curso }}</a>
+</div>
+{% include "_progreso_detalle.html" %}
+{% endblock %}

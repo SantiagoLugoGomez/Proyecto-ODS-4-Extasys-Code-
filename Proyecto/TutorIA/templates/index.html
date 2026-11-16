@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block titulo %}Inicio{% endblock %}
+{% block contenido %}
+
+<section class="portada">
+    <div>
+        <p class="ceja">Tutoría personalizada · ODS 4</p>
+        <h1>Estudia a tu ritmo, aunque no haya Internet</h1>
+        <p class="suave">TutorIA te evalúa con una IA que corre en este mismo computador, mide qué tanto dominas cada subtema y arma un plan con los ejercicios que más te ayudan en el tiempo que tienes.</p>
+    </div>
+    <div class="pasos">
+        <div class="paso"><span class="paso-numero">1</span><div><h3>Presenta la evaluación</h3><p class="suave pequeno">10 preguntas sobre el tema que elijas.</p></div></div>
+        <div class="paso"><span class="paso-numero">2</span><div><h3>Mira tu dominio</h3><p class="suave pequeno">El sistema recuerda cómo vas en cada subtema.</p></div></div>
+        <div class="paso"><span class="paso-numero">3</span><div><h3>Recibe tu plan</h3><p class="suave pequeno">Los mejores ejercicios para tus minutos disponibles.</p></div></div>
+    </div>
+</section>
+
+<div class="pestanas" role="tablist">
+    <button class="pestana {{ 'activa' if not error_progreso }}" data-panel="panel-evaluacion" type="button">Empezar evaluación</button>
+    <button class="pestana {{ 'activa' if error_progreso }}" data-panel="panel-progreso" type="button">Ver mi progreso</button>
+</div>
+
+<section class="tarjeta panel-pestana {{ 'activo' if not error_progreso }}" id="panel-evaluacion">
+    <h2>Tus datos y el tema</h2>
+    <p class="suave pequeno" style="margin-bottom: 18px">Si ya estudiaste antes, usa el mismo colegio, curso y número de lista para continuar donde ibas.</p>
+
+    <form class="formulario" action="{{ url_for('evaluacion') }}" method="POST"
+          data-cargando="Creando tu evaluación" data-detalle="La IA está escribiendo 10 preguntas. Puede tardar un poco.">
+        <div class="campo"><label for="nombre">Nombre</label><input id="nombre" name="nombre" required placeholder="Ej: Ana Gómez"></div>
+        <div class="campo"><label for="colegio">Colegio</label><input id="colegio" name="colegio" required placeholder="Ej: Técnico Palermo"></div>
+        <div class="campo"><label for="curso">Curso</label><input id="curso" name="curso" required placeholder="Ej: 1102"></div>
+        <div class="campo"><label for="numero_lista">Número de lista</label><input id="numero_lista" name="numero_lista" type="number" min="1" required></div>
+        <div class="campo"><label for="edad">Edad</label><input id="edad" name="edad" type="number" min="5" max="99" required></div>
+        <div class="campo">
+            <label for="nivel">Nivel</label>
+            <select id="nivel" name="nivel" required>
+                <option value="Basico">Básico</option>
+                <option value="Intermedio">Intermedio</option>
+                <option value="Avanzado">Avanzado</option>
+            </select>
+        </div>
+        <div class="campo">
+            <label for="materia">Materia</label>
+            <select id="materia" name="materia" required>
+                <option value="" disabled selected>Selecciona una materia</option>
+                <option value="Calculo Diferencial">Cálculo Diferencial</option>
+                <option value="Ingles">Inglés</option>
+                <option value="Fisica">Física</option>
+            </select>
+        </div>
+        <div class="campo">
+            <label for="tema">Tema</label>
+            <select id="tema" name="tema" required disabled>
+                <option value="">Primero elige la materia</option>
+            </select>
+        </div>
+        <div class="campo ancho oculto" id="campo-otro">
+            <label for="tema_otro">¿Qué tema quieres estudiar?</label>
+            <input id="tema_otro" name="tema_otro" placeholder="Escribe el tema">
+        </div>
+        <button class="boton boton-principal boton-ancho" type="submit">Generar evaluación</button>
+    </form>
+</section>
+
+<section class="tarjeta panel-pestana {{ 'activo' if error_progreso }}" id="panel-progreso">
+    <h2>Consulta tu progreso</h2>
+    <p class="suave pequeno" style="margin-bottom: 18px">Escribe los mismos datos con los que te registraste.</p>
+    {% if error_progreso %}<div class="alerta">{{ error_progreso }}</div>{% endif %}
+    <form class="formulario" action="{{ url_for('consultar_progreso') }}" method="POST">
+        <div class="campo"><label for="colegio_progreso">Colegio</label><input id="colegio_progreso" name="colegio_progreso" required></div>
+        <div class="campo"><label for="curso_progreso">Curso</label><input id="curso_progreso" name="curso_progreso" required></div>
+        <div class="campo"><label for="numero_lista_progreso">Número de lista</label><input id="numero_lista_progreso" name="numero_lista_progreso" type="number" min="1" required></div>
+        <div class="campo" style="justify-content: end"><button class="boton boton-oscuro" type="submit">Ver mi progreso</button></div>
+    </form>
+</section>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    var temas = {{ temas | tojson }};
+    var materia = document.getElementById("materia");
+    var tema = document.getElementById("tema");
+    var campoOtro = document.getElementById("campo-otro");
+    var temaOtro = document.getElementById("tema_otro");
+
+    materia.addEventListener("change", function () {
+        tema.innerHTML = "";
+        (temas[materia.value] || []).forEach(function (nombre) {
+            tema.add(new Option(nombre, nombre));
+        });
+        tema.add(new Option("Otro tema...", "__otro__"));
+        tema.disabled = false;
+        tema.dispatchEvent(new Event("change"));
+    });
+
+    tema.addEventListener("change", function () {
+        var otro = tema.value === "__otro__";
+        campoOtro.classList.toggle("oculto", !otro);
+        temaOtro.required = otro;
+    });
+
+    document.querySelectorAll(".pestana").forEach(function (boton) {
+        boton.addEventListener("click", function () {
+            document.querySelectorAll(".pestana").forEach(function (b) { b.classList.remove("activa"); });
+            document.querySelectorAll(".panel-pestana").forEach(function (p) { p.classList.remove("activo"); });
+            boton.classList.add("activa");
+            document.getElementById(boton.dataset.panel).classList.add("activo");
+        });
+    });
+</script>
+{% endblock %}

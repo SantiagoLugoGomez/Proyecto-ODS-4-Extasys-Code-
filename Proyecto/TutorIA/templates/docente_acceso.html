@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block titulo %}Docentes{% endblock %}
+{% block contenido %}
+
+<section class="portada">
+    <div>
+        <p class="ceja">Rol docente</p>
+        <h1>Sigue el avance de tu curso</h1>
+        <p class="suave">Mira quién está practicando, en qué subtemas tiene dificultades el grupo y qué estudiantes necesitan apoyo. Los datos se quedan en este computador.</p>
+    </div>
+    <div class="pasos">
+        <div class="paso"><span class="paso-numero">1</span><div><h3>Indicadores del curso</h3><p class="suave pequeno">Acierto, mejora, tasa de retorno y uso del plan.</p></div></div>
+        <div class="paso"><span class="paso-numero">2</span><div><h3>Subtemas más débiles</h3><p class="suave pequeno">El dominio promedio del grupo en cada subtema.</p></div></div>
+        <div class="paso"><span class="paso-numero">3</span><div><h3>Detalle por estudiante</h3><p class="suave pequeno">Historial, dominio y alertas de apoyo. Exportable a Excel.</p></div></div>
+    </div>
+</section>
+
+<div class="pestanas">
+    <button class="pestana {{ 'activa' if pestana != 'registro' }}" data-panel="panel-ingreso" type="button">Iniciar sesión</button>
+    <button class="pestana {{ 'activa' if pestana == 'registro' }}" data-panel="panel-registro" type="button">Crear cuenta</button>
+</div>
+
+<section class="tarjeta panel-pestana {{ 'activo' if pestana != 'registro' }}" id="panel-ingreso" style="max-width: 640px">
+    {% if error_ingreso %}<div class="alerta">{{ error_ingreso }}</div>{% endif %}
+    <form class="formulario" action="{{ url_for('docente_ingresar') }}" method="POST">
+        <div class="campo"><label for="usuario">Usuario</label><input id="usuario" name="usuario" required autocomplete="username"></div>
+        <div class="campo"><label for="clave">Clave</label><input id="clave" name="clave" type="password" required autocomplete="current-password"></div>
+        <button class="boton boton-principal boton-ancho" type="submit">Entrar al panel</button>
+    </form>
+</section>
+
+<section class="tarjeta panel-pestana {{ 'activo' if pestana == 'registro' }}" id="panel-registro" style="max-width: 640px">
+    {% if error_registro %}<div class="alerta">{{ error_registro }}</div>{% endif %}
+    <p class="suave pequeno" style="margin-bottom: 16px">Escribe el colegio igual que lo escriben tus estudiantes: así el panel encuentra sus resultados.</p>
+    <form class="formulario" action="{{ url_for('docente_registro') }}" method="POST">
+        <div class="campo"><label for="nombre">Nombre</label><input id="nombre" name="nombre" required></div>
+        <div class="campo"><label for="colegio">Colegio</label><input id="colegio" name="colegio" required></div>
+        <div class="campo"><label for="usuario_nuevo">Usuario</label><input id="usuario_nuevo" name="usuario" required autocomplete="username"></div>
+        <div class="campo"><label for="clave_nueva">Clave (mínimo 4 caracteres)</label><input id="clave_nueva" name="clave" type="password" minlength="4" required autocomplete="new-password"></div>
+        <button class="boton boton-oscuro boton-ancho" type="submit">Crear cuenta</button>
+    </form>
+</section>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.querySelectorAll(".pestana").forEach(function (boton) {
+        boton.addEventListener("click", function () {
+            document.querySelectorAll(".pestana").forEach(function (b) { b.classList.remove("activa"); });
+            document.querySelectorAll(".panel-pestana").forEach(function (p) { p.classList.remove("activo"); });
+            boton.classList.add("activa");
+            document.getElementById(boton.dataset.panel).classList.add("activo");
+        });
+    });
+</script>
+{% endblock %}

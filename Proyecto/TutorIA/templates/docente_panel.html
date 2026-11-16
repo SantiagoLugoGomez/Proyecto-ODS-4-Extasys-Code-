@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+{% block titulo %}Panel docente{% endblock %}
+{% block contenido %}
+
+{% macro numero(valor, sufijo="") -%}
+{%- if valor is none -%}–{%- else -%}{{ valor | round(0) | int }}{{ sufijo }}{%- endif -%}
+{%- endmacro %}
+
+<div class="encabezado">
+    <div>
+        <p class="ceja">Panel docente · {{ docente[3] }}</p>
+        <h1>Hola, {{ docente[1] }}</h1>
+        <p class="suave">{{ "Curso " ~ curso if curso else "Todos los cursos" }} · {{ kpis.registrados }} estudiantes registrados</p>
+    </div>
+    <form method="GET" action="{{ url_for('docente_panel') }}" style="display: flex; gap: 10px; align-items: end">
+        <div class="campo">
+            <label for="curso">Curso</label>
+            <select id="curso" name="curso" onchange="this.form.submit()">
+                <option value="">Todos</option>
+                {% for c in cursos %}<option value="{{ c }}" {{ 'selected' if c == curso }}>{{ c }}</option>{% endfor %}
+            </select>
+        </div>
+        <a class="boton boton-claro" href="{{ url_for('docente_exportar', curso=curso or '') }}">Exportar a Excel (CSV)</a>
+    </form>
+</div>
+
+<div class="rejilla cuatro-columnas">
+    <div class="tarjeta kpi">
+        <span class="suave pequeno">Estudiantes activos</span>
+        <span class="kpi-valor">{{ kpis.activos }} <span class="suave" style="font-size: 18px">de {{ kpis.registrados }}</span></span>
+        <span class="kpi-meta">Con al menos 1 evaluación</span>
+    </div>
+    <div class="tarjeta kpi">
+        <span class="suave pequeno">Acierto promedio</span>
+        <span class="kpi-valor">{{ numero(kpis.acierto, "%") }}</span>
+        <span class="kpi-meta">{{ kpis.evaluaciones }} evaluaciones</span>
+    </div>
+    <div class="tarjeta kpi">
+        <span class="suave pequeno">Mejora promedio</span>
+        <span class="kpi-valor {{ '' if kpis.mejora is none else ('kpi-ok' if kpis.mejora >= 10 else 'kpi-bajo') }}">{{ ("+" if kpis.mejora is not none and kpis.mejora >= 0) ~ numero(kpis.mejora) }}</span>
+        <span class="kpi-meta">Meta: +10 puntos entre primera y última</span>
+    </div>
+    <div class="tarjeta kpi">
+        <span class="suave pequeno">Tasa de retorno</span>
+        <span class="kpi-valor {{ '' if kpis.retorno is none else ('kpi-ok' if kpis.retorno >= 60 else 'kpi-bajo') }}">{{ numero(kpis.retorno, "%") }}</span>
+        <span class="kpi-meta">Meta: 60% vuelve a evaluarse</span>
+    </div>
+</div>
+
+<div class="rejilla dos-columnas seccion">
+    <section class="tarjeta dominio" style="gap: 14px">
+        <div>
+            <h2>Subtemas donde más cuesta</h2>
+            <p class="suave pequeno">Dominio promedio del grupo, según el último registro de cada estudiante.</p>
+        </div>
+        {% for s in subtemas %}
+        <div class="dominio">
+            <div class="dominio-fila pequeno">
+                <span><strong>{{ s.subtema | bonito }}</strong> <span class="suave">· {{ s.tema | bonito }}</span></span>
+                <span><strong>{{ (s.dominio * 100) | round(0) | int }}%</strong> <span class="suave">({{ s.estudiantes }})</span></span>
+            </div>
+            <div class="barra-fondo"><div class="barra-valor" data-valor="{{ s.dominio * 100 }}"></div></div>
+        </div>
+        {% else %}
+        <p class="vacio">Aún no hay datos de dominio.</p>
+        {% endfor %}
+    </section>
+
+    <section class="tarjeta tarjeta-oscura" style="display: flex; flex-direction: column; gap: 18px">
+        <div>
+            <h2>Para esta semana</h2>
+            <p class="suave pequeno">Resumen automático del curso.</p>
+        </div>
+        <div class="kpi">
+            <span class="kpi-valor" style="color: #f2a77d">{{ kpis.apoyo }}</span>
+            <span class="suave">{{ "estudiante necesita" if kpis.apoyo == 1 else "estudiantes necesitan" }} apoyo (dominio promedio bajo 50% o última evaluación bajo 60%).</span>
+        </div>
+        {% if subtemas %}
+        <div class="kpi">
+            <span class="kpi-valor" style="font-size: 24px">{{ subtemas[0].subtema | bonito }}</span>
+            <span class="suave">es el subtema más débil del grupo: un buen punto para repasar en clase.</span>
+        </div>
+        {% endif %}
+        <div class="kpi">
+            <span class="kpi-valor" style="font-size: 24px">{{ numero(kpis.uso_plan, "%") }}</span>
+            <span class="suave">de las evaluaciones terminan con un plan de estudio (meta: 70%).</span>
+        </div>
+    </section>
+</div>
+
+<section class="seccion">
+    <div class="titulo-seccion">
+        <h2>Estudiantes</h2>
+        <div class="filtros">
+            <input id="buscar" type="search" placeholder="Buscar estudiante">
+            <div class="chips">
+                <button type="button" class="chip chip-filtro activo" data-estado="">Todos</button>
+                <button type="button" class="chip chip-filtro chip-rojo" data-estado="Necesita apoyo">Necesita apoyo ({{ kpis.apoyo }})</button>
+                <button type="button" class="chip chip-filtro chip-verde" data-estado="Al día">Al día</button>
+                <button type="button" class="chip chip-filtro" data-estado="Sin actividad">Sin actividad</button>
+            </div>
+        </div>
+    </div>
+    <div class="tarjeta tabla-envoltura" style="padding: 8px 16px">
+        {% if estudiantes %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Curso</th><th class="numero">Lista</th><th>Nombre</th><th class="numero">Evaluaciones</th>
+                    <th class="numero">Última</th><th class="numero">Mejora</th><th style="width: 180px">Dominio promedio</th><th>Estado</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for e in estudiantes %}
+            <tr data-estado="{{ e.estado }}" data-nombre="{{ e.nombre | lower }}">
+                <td>{{ e.curso }}</td>
+                <td class="numero">{{ e.numero_lista }}</td>
+                <td class="nombre"><a class="enlace" href="{{ url_for('docente_estudiante', estudiante_id=e.id) }}">{{ e.nombre }}</a></td>
+                <td class="numero">{{ e.evaluaciones }}</td>
+                <td class="numero">{{ numero(e.ultima, "%") }}</td>
+                <td class="numero">{% if e.mejora is none %}–{% else %}<span style="color: {{ 'var(--verde)' if e.mejora >= 0 else 'var(--rojo)' }}; font-weight: 600">{{ "+" if e.mejora >= 0 }}{{ e.mejora | round(0) | int }}</span>{% endif %}</td>
+                <td>
+                    {% if e.dominio is none %}<span class="suave">–</span>{% else %}
+                    <div class="dominio-fila pequeno"><div class="barra-fondo" style="flex: 1"><div class="barra-valor" data-valor="{{ e.dominio * 100 }}"></div></div><strong>{{ (e.dominio * 100) | round(0) | int }}%</strong></div>
+                    {% endif %}
+                </td>
+                <td><span class="chip {{ {'Necesita apoyo': 'chip-rojo', 'Al día': 'chip-verde'}.get(e.estado, '') }}">{{ e.estado }}</span></td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        <p id="sin-resultados" class="vacio" hidden>Ningún estudiante coincide con el filtro.</p>
+        {% else %}
+        <div class="vacio">
+            <h3>Todavía no hay estudiantes de {{ docente[3] }}</h3>
+            <p class="pequeno">Aparecerán aquí cuando presenten su primera evaluación con el mismo nombre de colegio.</p>
+        </div>
+        {% endif %}
+    </div>
+</section>
+
+<script>
+    const filas = document.querySelectorAll("tr[data-estado]")
+    const buscar = document.getElementById("buscar")
+    let estado = ""
+
+    function filtrar() {
+        const texto = buscar.value.trim().toLowerCase()
+        let visibles = 0
+        filas.forEach(fila => {
+            const ver = (!estado || fila.dataset.estado === estado) && fila.dataset.nombre.includes(texto)
+            fila.hidden = !ver
+            if (ver) visibles++
+        })
+        document.getElementById("sin-resultados").hidden = visibles > 0
+    }
+
+    document.querySelectorAll(".chip-filtro").forEach(boton => boton.addEventListener("click", () => {
+        document.querySelectorAll(".chip-filtro").forEach(b => b.classList.remove("activo"))
+        boton.classList.add("activo")
+        estado = boton.dataset.estado
+        filtrar()
+    }))
+
+    buscar.addEventListener("input", filtrar)
+</script>
+
+{% endblock %}

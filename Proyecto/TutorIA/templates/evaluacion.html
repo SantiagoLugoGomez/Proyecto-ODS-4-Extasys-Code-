@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block titulo %}Evaluación{% endblock %}
+{% block contenido %}
+
+<div class="encabezado">
+    <div>
+        <p class="ceja">Evaluación</p>
+        <h1>{{ tema | bonito }}</h1>
+    </div>
+    <div class="chips">
+        <span class="chip chip-azul">{{ materia | bonito }}</span>
+        <span class="chip">{{ nivel | bonito }}</span>
+        <span class="chip">{{ preguntas | length }} preguntas</span>
+    </div>
+</div>
+
+<div class="progreso-evaluacion">
+    <div class="dominio-fila pequeno"><span class="suave">Respondidas</span><strong id="contador">0 de {{ preguntas | length }}</strong></div>
+    <div class="barra-fondo"><div class="barra-valor" id="barra-respuestas" style="background: var(--acento)"></div></div>
+</div>
+
+<form action="{{ url_for('resultado') }}" method="POST" id="formulario-evaluacion">
+    {% for pregunta in preguntas %}
+    {% set numero = loop.index0 %}
+    <section class="tarjeta pregunta">
+        <div class="pregunta-cabecera">
+            <span class="pregunta-numero">Pregunta {{ loop.index }}</span>
+            <span class="chip">{{ pregunta["subtema"] | bonito }}</span>
+        </div>
+        <p class="pregunta-texto">{{ pregunta["pregunta"] }}</p>
+        <div class="opciones">
+            {% for opcion in pregunta["opciones"] %}
+            <label class="opcion">
+                <input type="radio" name="pregunta_{{ numero }}" value="{{ loop.index }}" required>
+                <span class="letra">{{ "ABCD"[loop.index0] }}</span>
+                <span>{{ opcion }}</span>
+            </label>
+            {% endfor %}
+        </div>
+    </section>
+    {% endfor %}
+
+    <button class="boton boton-principal" type="submit" id="enviar" style="width: 100%" disabled>Responde todas las preguntas</button>
+</form>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    var total = {{ preguntas | length }};
+    var formulario = document.getElementById("formulario-evaluacion");
+    var enviar = document.getElementById("enviar");
+
+    formulario.addEventListener("change", function () {
+        var respondidas = new Set();
+        formulario.querySelectorAll("input:checked").forEach(function (r) { respondidas.add(r.name); });
+        var n = respondidas.size;
+        document.getElementById("contador").textContent = n + " de " + total;
+        document.getElementById("barra-respuestas").style.width = (n / total * 100) + "%";
+        enviar.disabled = n < total;
+        enviar.textContent = n < total ? "Responde todas las preguntas" : "Calificar evaluación";
+    });
+</script>
+{% endblock %}

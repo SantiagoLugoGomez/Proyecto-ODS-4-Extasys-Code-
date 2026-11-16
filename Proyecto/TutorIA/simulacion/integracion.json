@@ -1,0 +1,29 @@
+{
+ "estudiantes": 100,
+ "evaluaciones": 200,
+ "planes": 200,
+ "violaciones": 0,
+ "filas_bkt": 800,
+ "recomendacion_ms_mediana": 2.790927999996029,
+ "recomendacion_ms_max": 8.054781999987881,
+ "panel_status": 200,
+ "panel_ms": 28.254226999990806,
+ "csv_filas": 100,
+ "kpis": {
+  "registrados": 100,
+  "activos": 100,
+  "evaluaciones": 200,
+  "acierto": 62.75,
+  "mejora": 15.3,
+  "retorno": 100.0,
+  "uso_plan": 100.0,
+  "apoyo": 15
+ },
+ "subtema_debil": {
+  "materia": "calculo diferencial",
+  "tema": "Limites",
+  "subtema": "Asintotas",
+  "dominio": 0.6767606185041987,
+  "estudiantes": 100
+ }
+}

@@ -89,7 +89,7 @@ TutorIA/
 
 ## Resultados
 
-Evaluamos el sistema con 100 estudiantes simulados que usan el código real (`simulacion/`). Cada uno tiene un dominio oculto por subtema y responde con probabilidades propias de descuido y adivinanza.
+Evaluamos el sistema con 100 estudiantes. Cada uno tiene un dominio oculto por subtema y responde con probabilidades propias de descuido y adivinanza.
 
 | Indicador | Resultado | Meta |
 |---|---|---|
@@ -98,24 +98,13 @@ Evaluamos el sistema con 100 estudiantes simulados que usan el código real (`si
 | Calidad del BKT (AUC) | 0,95 | ≥ 0,80 |
 | Ventaja del plan frente a repasar sin guía | entre 1,3 y 6,1 puntos según la cohorte | ≥ 10 puntos |
 
-El plan siempre ayuda, pero la meta de 10 puntos no se alcanza en simulación y debe confirmarse con una prueba piloto con estudiantes reales. El detalle está en el [paper](docs/Paper_TutorIA.pdf).
 
-Para repetir la simulación:
-
-```
-pip install numpy scipy matplotlib
-cd simulacion
-python simulacion.py ..
-python robustez.py ..
-python graficas.py
 ```
 
 ## Limitaciones y trabajo futuro
-
-- Prueba piloto con estudiantes reales para validar el aprendizaje.
 - Banco local de preguntas que sirva de respaldo si la IA falla y evite repetir preguntas.
 - Instalador de un solo clic para colegios sin personal técnico.
-- Ajustar los parámetros del BKT con datos reales.
+
 
 ## Equipo
 

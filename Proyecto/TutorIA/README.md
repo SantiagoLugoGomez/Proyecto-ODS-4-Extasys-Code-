@@ -89,7 +89,7 @@ TutorIA/
 
 ## Resultados
 
-Evaluamos el sistema con 100 estudiantes. Cada uno tiene un dominio oculto por subtema y responde con probabilidades propias de descuido y adivinanza.
+Evaluamos el sistema con 50 estudiantes. Cada uno tiene un dominio oculto por subtema y responde con probabilidades propias de descuido y adivinanza.
 
 | Indicador | Resultado | Meta |
 |---|---|---|

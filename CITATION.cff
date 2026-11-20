@@ -1,0 +1,42 @@
+cff-version: 1.2.0
+message: "Si usa TutorIA, cite el paper del proyecto."
+title: "TutorIA: tutor educativo con inteligencia artificial local y programación dinámica para estudiar sin conexión continua a Internet"
+type: software
+version: 1.0.0
+license: MIT
+repository-code: "https://github.com/SantiagoLugoGomez/Proyecto-ODS-4-Extasys-Code-"
+abstract: >-
+  Tutor web que funciona en un computador del colegio sin conexión continua a
+  Internet. Usa un modelo de lenguaje local para generar contenido, Bayesian
+  Knowledge Tracing para estimar el dominio por subtema y una mochila 0/1 con
+  programación dinámica para seleccionar ejercicios en el tiempo disponible.
+keywords:
+  - tutoría adaptativa
+  - Bayesian Knowledge Tracing
+  - mochila 0/1
+  - programación dinámica
+  - IA local
+  - ODS 4
+authors: &autores
+  - given-names: Juan Pablo
+    family-names: León
+    affiliation: Escuela Colombiana de Ingeniería Julio Garavito
+  - given-names: Mateo
+    family-names: Barrios
+    affiliation: Escuela Colombiana de Ingeniería Julio Garavito
+  - given-names: Santiago
+    family-names: Lugo
+    affiliation: Escuela Colombiana de Ingeniería Julio Garavito
+  - given-names: Alejandro
+    family-names: Peña
+    affiliation: Escuela Colombiana de Ingeniería Julio Garavito
+preferred-citation:
+  type: report
+  title: "TutorIA: tutor educativo con inteligencia artificial local y programación dinámica para estudiar sin conexión continua a Internet"
+  authors: *autores
+  institution:
+    name: Escuela Colombiana de Ingeniería Julio Garavito
+    city: Bogotá
+    country: CO
+  year: 2026
+  notes: "Diseño de Datos y Algoritmos · Proyecto ODS 4: Educación de calidad"

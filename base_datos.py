@@ -1,1017 +1,354 @@
+"""Capa de datos: único módulo que lee y escribe en SQLite.
+
+Tablas: estudiantes, resultados, progreso_bkt, planes y docentes. Todas las consultas
+usan parámetros (``?``), nunca texto concatenado del usuario.
+"""
+
 import sqlite3
-import os
+from contextlib import contextmanager
+
+import config
+
+ESQUEMA = """
+CREATE TABLE IF NOT EXISTS estudiantes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    numero_lista INTEGER NOT NULL,
+    nombre TEXT NOT NULL,
+    colegio TEXT NOT NULL,
+    edad INTEGER NOT NULL,
+    curso TEXT NOT NULL,
+    UNIQUE (colegio, curso, numero_lista)
+);
+
+CREATE TABLE IF NOT EXISTS resultados (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    estudiante_id INTEGER NOT NULL REFERENCES estudiantes(id),
+    materia TEXT NOT NULL,
+    tema TEXT NOT NULL,
+    nivel TEXT NOT NULL,
+    puntaje INTEGER NOT NULL,
+    total INTEGER NOT NULL,
+    porcentaje REAL NOT NULL,
+    fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS progreso_bkt (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    estudiante_id INTEGER NOT NULL REFERENCES estudiantes(id),
+    materia TEXT NOT NULL,
+    tema TEXT NOT NULL,
+    subtema TEXT NOT NULL,
+    dominio REAL NOT NULL,
+    fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS docentes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nombre TEXT NOT NULL,
+    usuario TEXT NOT NULL UNIQUE,
+    colegio TEXT NOT NULL,
+    clave_hash TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS planes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    estudiante_id INTEGER NOT NULL REFERENCES estudiantes(id),
+    materia TEXT NOT NULL,
+    tema TEXT NOT NULL,
+    tiempo_disponible INTEGER NOT NULL,
+    tiempo_usado INTEGER NOT NULL,
+    beneficio REAL NOT NULL,
+    ejercicios INTEGER NOT NULL,
+    fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_resultados_estudiante ON resultados (estudiante_id);
+CREATE INDEX IF NOT EXISTS idx_progreso_estudiante
+    ON progreso_bkt (estudiante_id, materia, tema, subtema);
+CREATE INDEX IF NOT EXISTS idx_planes_estudiante ON planes (estudiante_id);
+"""
 
 
-# ==========================================
-# CONFIGURACION DE LA BASE DE DATOS
-# ==========================================
-
-RUTA_DATA = "data"
-
-RUTA_BD = os.path.join(
-    RUTA_DATA,
-    "tutoria.db"
-)
-
-
-os.makedirs(
-    RUTA_DATA,
-    exist_ok=True
-)
-
-
-# ==========================================
-# CONECTAR
-# ==========================================
-
+@contextmanager
 def conectar():
+    """Abre una conexión, confirma los cambios al salir y siempre la cierra."""
+    conexion = sqlite3.connect(config.RUTA_BD)
+    conexion.execute("PRAGMA foreign_keys = ON")
+    try:
+        yield conexion
+        conexion.commit()
+    except Exception:
+        conexion.rollback()
+        raise
+    finally:
+        conexion.close()
 
-    return sqlite3.connect(
-        RUTA_BD
-    )
-
-
-# ==========================================
-# CREAR BASE DE DATOS
-# ==========================================
 
 def crear_base_datos():
+    """Crea la carpeta de datos, las tablas y los índices si no existen."""
+    config.RUTA_BD.parent.mkdir(parents=True, exist_ok=True)
+    with conectar() as conexion:
+        conexion.executescript(ESQUEMA)
 
-    conexion = conectar()
 
-    cursor = conexion.cursor()
+def _marcas(cantidad):
+    return ",".join("?" * cantidad)
 
 
-    # ======================================
-    # TABLA ESTUDIANTES
-    # ======================================
+# ------------------------------------------------------------------
+# Estudiantes
+# ------------------------------------------------------------------
 
-    cursor.execute(
-        """
-        CREATE TABLE IF NOT EXISTS estudiantes (
 
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+def obtener_o_crear_estudiante(numero_lista, nombre, colegio, edad, curso):
+    """Devuelve el id del estudiante (colegio, curso, lista); si no existe, lo crea.
 
-            numero_lista INTEGER NOT NULL,
+    Si ya existe, actualiza su nombre y edad con los últimos datos escritos.
+    """
+    with conectar() as conexion:
+        fila = conexion.execute(
+            "SELECT id FROM estudiantes WHERE colegio = ? AND curso = ? AND numero_lista = ?",
+            (colegio, curso, numero_lista),
+        ).fetchone()
 
-            nombre TEXT NOT NULL,
-
-            colegio TEXT NOT NULL,
-
-            edad INTEGER NOT NULL,
-
-            curso TEXT NOT NULL,
-
-            UNIQUE (
-                colegio,
-                curso,
-                numero_lista
+        if fila is not None:
+            conexion.execute(
+                "UPDATE estudiantes SET nombre = ?, edad = ? WHERE id = ?",
+                (nombre, edad, fila[0]),
             )
+            return fila[0]
+
+        cursor = conexion.execute(
+            "INSERT INTO estudiantes (numero_lista, nombre, colegio, edad, curso) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (numero_lista, nombre, colegio, edad, curso),
         )
-        """
-    )
-
-
-    # ======================================
-    # TABLA RESULTADOS
-    # ======================================
-
-    cursor.execute(
-        """
-        CREATE TABLE IF NOT EXISTS resultados (
-
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-
-            estudiante_id INTEGER NOT NULL,
-
-            materia TEXT NOT NULL,
-
-            tema TEXT NOT NULL,
-
-            nivel TEXT NOT NULL,
-
-            puntaje INTEGER NOT NULL,
-
-            total INTEGER NOT NULL,
-
-            porcentaje REAL NOT NULL,
-
-            fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-
-            FOREIGN KEY (
-                estudiante_id
-            )
-            REFERENCES estudiantes(id)
-        )
-        """
-    )
-
-
-    # ======================================
-    # TABLA PROGRESO BKT
-    # ======================================
-
-    cursor.execute(
-        """
-        CREATE TABLE IF NOT EXISTS progreso_bkt (
-
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-
-            estudiante_id INTEGER NOT NULL,
-
-            materia TEXT NOT NULL,
-
-            tema TEXT NOT NULL,
-
-            subtema TEXT NOT NULL,
-
-            dominio REAL NOT NULL,
-
-            fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-
-            FOREIGN KEY (
-                estudiante_id
-            )
-            REFERENCES estudiantes(id)
-        )
-        """
-    )
-
-
-    # ======================================
-    # TABLA DOCENTES
-    # ======================================
-
-    cursor.execute(
-        """
-        CREATE TABLE IF NOT EXISTS docentes (
-
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-
-            nombre TEXT NOT NULL,
-
-            usuario TEXT NOT NULL UNIQUE,
-
-            colegio TEXT NOT NULL,
-
-            clave_hash TEXT NOT NULL
-        )
-        """
-    )
-
-
-    # ======================================
-    # TABLA PLANES DE ESTUDIO
-    # ======================================
-
-    cursor.execute(
-        """
-        CREATE TABLE IF NOT EXISTS planes (
-
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-
-            estudiante_id INTEGER NOT NULL,
-
-            materia TEXT NOT NULL,
-
-            tema TEXT NOT NULL,
-
-            tiempo_disponible INTEGER NOT NULL,
-
-            tiempo_usado INTEGER NOT NULL,
-
-            beneficio REAL NOT NULL,
-
-            ejercicios INTEGER NOT NULL,
-
-            fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-
-            FOREIGN KEY (
-                estudiante_id
-            )
-            REFERENCES estudiantes(id)
-        )
-        """
-    )
-
-
-    conexion.commit()
-
-    conexion.close()
-
-
-# ==========================================
-# OBTENER O CREAR ESTUDIANTE
-# ==========================================
-
-def obtener_o_crear_estudiante(
-    numero_lista,
-    nombre,
-    colegio,
-    edad,
-    curso
-):
-
-    conexion = conectar()
-
-    cursor = conexion.cursor()
-
-
-    cursor.execute(
-        """
-        SELECT id
-
-        FROM estudiantes
-
-        WHERE colegio = ?
-        AND curso = ?
-        AND numero_lista = ?
-        """,
-        (
-            colegio,
-            curso,
-            numero_lista
-        )
-    )
-
-
-    estudiante = cursor.fetchone()
-
-
-    # ======================================
-    # SI EL ESTUDIANTE YA EXISTE
-    # ======================================
-
-    if estudiante is not None:
-
-        estudiante_id = estudiante[0]
-
-
-        cursor.execute(
-            """
-            UPDATE estudiantes
-
-            SET
-                nombre = ?,
-                edad = ?
-
-            WHERE id = ?
-            """,
-            (
-                nombre,
-                edad,
-                estudiante_id
-            )
+        return cursor.lastrowid
+
+
+def buscar_estudiante(numero_lista, colegio, curso):
+    """(id, nombre, colegio, edad, curso, numero_lista) o None."""
+    with conectar() as conexion:
+        return conexion.execute(
+            "SELECT id, nombre, colegio, edad, curso, numero_lista FROM estudiantes "
+            "WHERE colegio = ? AND curso = ? AND numero_lista = ?",
+            (colegio, curso, numero_lista),
+        ).fetchone()
+
+
+def obtener_estudiante(estudiante_id):
+    """(id, nombre, colegio, edad, curso, numero_lista) o None."""
+    with conectar() as conexion:
+        return conexion.execute(
+            "SELECT id, nombre, colegio, edad, curso, numero_lista FROM estudiantes WHERE id = ?",
+            (estudiante_id,),
+        ).fetchone()
+
+
+# ------------------------------------------------------------------
+# Resultados, dominio y planes
+# ------------------------------------------------------------------
+
+
+def guardar_resultado(estudiante_id, materia, tema, nivel, puntaje, total, porcentaje):
+    with conectar() as conexion:
+        conexion.execute(
+            "INSERT INTO resultados (estudiante_id, materia, tema, nivel, puntaje, total, "
+            "porcentaje) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (estudiante_id, materia, tema, nivel, puntaje, total, porcentaje),
         )
 
 
-        conexion.commit()
-
-        conexion.close()
-
-
-        return estudiante_id
-
-
-    # ======================================
-    # SI ES NUEVO ESTUDIANTE
-    # ======================================
-
-    cursor.execute(
-        """
-        INSERT INTO estudiantes (
-            numero_lista,
-            nombre,
-            colegio,
-            edad,
-            curso
+def guardar_dominio_bkt(estudiante_id, materia, tema, subtema, dominio):
+    with conectar() as conexion:
+        conexion.execute(
+            "INSERT INTO progreso_bkt (estudiante_id, materia, tema, subtema, dominio) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (estudiante_id, materia, tema, subtema, dominio),
         )
 
-        VALUES (
-            ?,
-            ?,
-            ?,
-            ?,
-            ?
-        )
-        """,
-        (
-            numero_lista,
-            nombre,
-            colegio,
-            edad,
-            curso
-        )
-    )
 
-
-    conexion.commit()
-
-
-    estudiante_id = cursor.lastrowid
-
-
-    conexion.close()
-
-
-    return estudiante_id
-
-
-# ==========================================
-# BUSCAR ESTUDIANTE
-# ==========================================
-
-def buscar_estudiante(
-    numero_lista,
-    colegio,
-    curso
-):
-
-    conexion = conectar()
-
-    cursor = conexion.cursor()
-
-
-    cursor.execute(
-        """
-        SELECT
-            id,
-            nombre,
-            colegio,
-            edad,
-            curso,
-            numero_lista
-
-        FROM estudiantes
-
-        WHERE colegio = ?
-        AND curso = ?
-        AND numero_lista = ?
-        """,
-        (
-            colegio,
-            curso,
-            numero_lista
-        )
-    )
-
-
-    estudiante = cursor.fetchone()
-
-
-    conexion.close()
-
-
-    return estudiante
-
-
-# ==========================================
-# GUARDAR RESULTADO
-# ==========================================
-
-def guardar_resultado(
-    estudiante_id,
-    materia,
-    tema,
-    nivel,
-    puntaje,
-    total,
-    porcentaje
-):
-
-    conexion = conectar()
-
-    cursor = conexion.cursor()
-
-
-    cursor.execute(
-        """
-        INSERT INTO resultados (
-            estudiante_id,
-            materia,
-            tema,
-            nivel,
-            puntaje,
-            total,
-            porcentaje
-        )
-
-        VALUES (
-            ?,
-            ?,
-            ?,
-            ?,
-            ?,
-            ?,
-            ?
-        )
-        """,
-        (
-            estudiante_id,
-            materia,
-            tema,
-            nivel,
-            puntaje,
-            total,
-            porcentaje
-        )
-    )
-
-
-    conexion.commit()
-
-    conexion.close()
-
-
-# ==========================================
-# GUARDAR DOMINIO BKT
-# ==========================================
-
-def guardar_dominio_bkt(
-    estudiante_id,
-    materia,
-    tema,
-    subtema,
-    dominio
-):
-
-    conexion = conectar()
-
-    cursor = conexion.cursor()
-
-
-    cursor.execute(
-        """
-        INSERT INTO progreso_bkt (
-            estudiante_id,
-            materia,
-            tema,
-            subtema,
-            dominio
-        )
-
-        VALUES (
-            ?,
-            ?,
-            ?,
-            ?,
-            ?
-        )
-        """,
-        (
-            estudiante_id,
-            materia,
-            tema,
-            subtema,
-            dominio
-        )
-    )
-
-
-    conexion.commit()
-
-    conexion.close()
-
-
-# ==========================================
-# CARGAR ULTIMO DOMINIO BKT
-# ==========================================
-
-def cargar_dominio_bkt(
-    estudiante_id,
-    materia,
-    tema,
-    subtema
-):
-
-    conexion = conectar()
-
-    cursor = conexion.cursor()
-
-
-    cursor.execute(
-        """
-        SELECT dominio
-
-        FROM progreso_bkt
-
-        WHERE estudiante_id = ?
-        AND materia = ?
-        AND tema = ?
-        AND subtema = ?
-
-        ORDER BY
-            fecha DESC,
-            id DESC
-
-        LIMIT 1
-        """,
-        (
-            estudiante_id,
-            materia,
-            tema,
-            subtema
-        )
-    )
-
-
-    resultado = cursor.fetchone()
-
-
-    conexion.close()
-
-
-    if resultado is None:
-
-        return None
-
-
-    return resultado[0]
-
-
-# ==========================================
-# OBTENER HISTORIAL DE EVALUACIONES
-# ==========================================
-
-def obtener_historial(
-    estudiante_id
-):
-
-    conexion = conectar()
-
-    cursor = conexion.cursor()
-
-
-    cursor.execute(
-        """
-        SELECT
-            materia,
-            tema,
-            nivel,
-            puntaje,
-            total,
-            porcentaje,
-            fecha
-
-        FROM resultados
-
-        WHERE estudiante_id = ?
-
-        ORDER BY
-            fecha DESC,
-            id DESC
-        """,
-        (
-            estudiante_id,
-        )
-    )
-
-
-    historial = cursor.fetchall()
-
-
-    conexion.close()
-
-
-    return historial
-
-
-# ==========================================
-# OBTENER DOMINIOS ACTUALES
-# ==========================================
-
-def obtener_dominios_actuales(
-    estudiante_id
-):
-
-    conexion = conectar()
-
-    cursor = conexion.cursor()
-
-
-    cursor.execute(
-        """
-        SELECT
-            materia,
-            tema,
-            subtema,
-            dominio,
-            fecha,
-            id
-
-        FROM progreso_bkt
-
-        WHERE estudiante_id = ?
-
-        ORDER BY
-            fecha DESC,
-            id DESC
-        """,
-        (
-            estudiante_id,
-        )
-    )
-
-
-    registros = cursor.fetchall()
-
-
-    conexion.close()
-
-
+def cargar_dominio_bkt(estudiante_id, materia, tema, subtema):
+    """Último dominio guardado de un subtema, o None si nunca lo ha trabajado."""
+    with conectar() as conexion:
+        fila = conexion.execute(
+            "SELECT dominio FROM progreso_bkt "
+            "WHERE estudiante_id = ? AND materia = ? AND tema = ? AND subtema = ? "
+            "ORDER BY fecha DESC, id DESC LIMIT 1",
+            (estudiante_id, materia, tema, subtema),
+        ).fetchone()
+    return None if fila is None else fila[0]
+
+
+def obtener_historial(estudiante_id):
+    """Evaluaciones del estudiante, de la más reciente a la más antigua.
+
+    Cada fila es (materia, tema, nivel, puntaje, total, porcentaje, fecha). La fecha se
+    convierte a la hora local del computador (SQLite la guarda en UTC).
+    """
+    with conectar() as conexion:
+        return conexion.execute(
+            "SELECT materia, tema, nivel, puntaje, total, porcentaje, "
+            "datetime(fecha, 'localtime') FROM resultados WHERE estudiante_id = ? "
+            "ORDER BY fecha DESC, id DESC",
+            (estudiante_id,),
+        ).fetchall()
+
+
+def _registros_bkt(estudiante_id, orden):
+    with conectar() as conexion:
+        return conexion.execute(
+            "SELECT materia, tema, subtema, dominio, fecha FROM progreso_bkt "
+            f"WHERE estudiante_id = ? ORDER BY fecha {orden}, id {orden}",
+            (estudiante_id,),
+        ).fetchall()
+
+
+def obtener_dominios_actuales(estudiante_id):
+    """Último dominio de cada (materia, tema, subtema) del estudiante."""
     dominios = {}
-
-
-    # ======================================
-    # CONSERVAR SOLO EL ULTIMO REGISTRO
-    # DE CADA SUBTEMA
-    # ======================================
-
-    for registro in registros:
-
-        materia = registro[0]
-
-        tema = registro[1]
-
-        subtema = registro[2]
-
-        dominio = registro[3]
-
-        fecha = registro[4]
-
-
-        clave = (
-            materia,
-            tema,
-            subtema
+    for materia, tema, subtema, dominio, fecha in _registros_bkt(estudiante_id, "DESC"):
+        dominios.setdefault(
+            (materia, tema, subtema),
+            {"materia": materia, "tema": tema, "subtema": subtema, "dominio": dominio,
+             "fecha": fecha},
         )
+    return list(dominios.values())
 
 
-        if clave not in dominios:
-
-            dominios[clave] = {
-
-                "materia": materia,
-
-                "tema": tema,
-
-                "subtema": subtema,
-
-                "dominio": dominio,
-
-                "fecha": fecha
-            }
-
-
-    return list(
-        dominios.values()
-    )
-
-
-# ==========================================
-# OBTENER EVOLUCION DEL BKT
-# ==========================================
-
-def obtener_evolucion_bkt(
-    estudiante_id
-):
-
-    conexion = conectar()
-
-    cursor = conexion.cursor()
-
-
-    cursor.execute(
-        """
-        SELECT
-            materia,
-            tema,
-            subtema,
-            dominio,
-            fecha,
-            id
-
-        FROM progreso_bkt
-
-        WHERE estudiante_id = ?
-
-        ORDER BY
-            fecha ASC,
-            id ASC
-        """,
-        (
-            estudiante_id,
-        )
-    )
-
-
-    registros = cursor.fetchall()
-
-
-    conexion.close()
-
-
+def obtener_evolucion_bkt(estudiante_id):
+    """Historial del dominio agrupado por subtema, en orden cronológico."""
     grupos = {}
+    for materia, tema, subtema, dominio, fecha in _registros_bkt(estudiante_id, "ASC"):
+        grupo = grupos.setdefault(
+            (materia, tema, subtema),
+            {"materia": materia, "tema": tema, "subtema": subtema, "registros": []},
+        )
+        grupo["registros"].append({"dominio": dominio, "fecha": fecha})
+    return list(grupos.values())
 
 
-    # ======================================
-    # AGRUPAR HISTORIAL POR SUBTEMA
-    # ======================================
-
-    for registro in registros:
-
-        materia = registro[0]
-
-        tema = registro[1]
-
-        subtema = registro[2]
-
-        dominio = registro[3]
-
-        fecha = registro[4]
-
-
-        clave = (
-            materia,
-            tema,
-            subtema
+def guardar_plan(estudiante_id, materia, tema, tiempo_disponible, tiempo_usado, beneficio,
+                 ejercicios):
+    with conectar() as conexion:
+        conexion.execute(
+            "INSERT INTO planes (estudiante_id, materia, tema, tiempo_disponible, "
+            "tiempo_usado, beneficio, ejercicios) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (estudiante_id, materia, tema, tiempo_disponible, tiempo_usado, beneficio,
+             ejercicios),
         )
 
 
-        if clave not in grupos:
+# ------------------------------------------------------------------
+# Docentes
+# ------------------------------------------------------------------
 
-            grupos[clave] = {
-
-                "materia": materia,
-
-                "tema": tema,
-
-                "subtema": subtema,
-
-                "registros": []
-            }
-
-
-        grupos[
-            clave
-        ][
-            "registros"
-        ].append(
-            {
-
-                "dominio": dominio,
-
-                "fecha": fecha
-            }
-        )
-
-
-    return list(
-        grupos.values()
-    )
-
-
-# ==========================================
-# GUARDAR PLAN DE ESTUDIO
-# ==========================================
-
-def guardar_plan(
-    estudiante_id,
-    materia,
-    tema,
-    tiempo_disponible,
-    tiempo_usado,
-    beneficio,
-    ejercicios
-):
-
-    conexion = conectar()
-
-    conexion.execute(
-        """
-        INSERT INTO planes (
-            estudiante_id, materia, tema, tiempo_disponible,
-            tiempo_usado, beneficio, ejercicios
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        """,
-        (estudiante_id, materia, tema, tiempo_disponible, tiempo_usado, beneficio, ejercicios)
-    )
-
-    conexion.commit()
-
-    conexion.close()
-
-
-# ==========================================
-# DOCENTES
-# ==========================================
 
 def crear_docente(nombre, usuario, colegio, clave_hash):
-
-    conexion = conectar()
-
-    existe = conexion.execute(
-        "SELECT id FROM docentes WHERE usuario = ?",
-        (usuario,)
-    ).fetchone()
-
-    if existe is not None:
-        conexion.close()
-        return None
-
-    cursor = conexion.execute(
-        "INSERT INTO docentes (nombre, usuario, colegio, clave_hash) VALUES (?, ?, ?, ?)",
-        (nombre, usuario, colegio, clave_hash)
-    )
-
-    conexion.commit()
-
-    docente_id = cursor.lastrowid
-
-    conexion.close()
-
-    return docente_id
+    """Crea la cuenta y devuelve su id, o None si el usuario ya existe."""
+    with conectar() as conexion:
+        try:
+            cursor = conexion.execute(
+                "INSERT INTO docentes (nombre, usuario, colegio, clave_hash) VALUES (?, ?, ?, ?)",
+                (nombre, usuario, colegio, clave_hash),
+            )
+        except sqlite3.IntegrityError:
+            return None
+        return cursor.lastrowid
 
 
 def buscar_docente(usuario):
-
-    conexion = conectar()
-
-    docente = conexion.execute(
-        "SELECT id, nombre, usuario, colegio, clave_hash FROM docentes WHERE usuario = ?",
-        (usuario,)
-    ).fetchone()
-
-    conexion.close()
-
-    return docente
+    """(id, nombre, usuario, colegio, clave_hash) o None."""
+    with conectar() as conexion:
+        return conexion.execute(
+            "SELECT id, nombre, usuario, colegio, clave_hash FROM docentes WHERE usuario = ?",
+            (usuario,),
+        ).fetchone()
 
 
 def obtener_docente(docente_id):
-
-    conexion = conectar()
-
-    docente = conexion.execute(
-        "SELECT id, nombre, usuario, colegio FROM docentes WHERE id = ?",
-        (docente_id,)
-    ).fetchone()
-
-    conexion.close()
-
-    return docente
+    """(id, nombre, usuario, colegio) o None."""
+    with conectar() as conexion:
+        return conexion.execute(
+            "SELECT id, nombre, usuario, colegio FROM docentes WHERE id = ?",
+            (docente_id,),
+        ).fetchone()
 
 
-# ==========================================
-# DATOS PARA EL PANEL DOCENTE
-# ==========================================
+# ------------------------------------------------------------------
+# Datos para el panel docente (el colegio se compara sin mayúsculas ni espacios)
+# ------------------------------------------------------------------
+
 
 def obtener_cursos(colegio):
-
-    conexion = conectar()
-
-    filas = conexion.execute(
-        """
-        SELECT DISTINCT curso FROM estudiantes
-        WHERE lower(trim(colegio)) = lower(trim(?))
-        ORDER BY curso
-        """,
-        (colegio,)
-    ).fetchall()
-
-    conexion.close()
-
+    with conectar() as conexion:
+        filas = conexion.execute(
+            "SELECT DISTINCT curso FROM estudiantes "
+            "WHERE lower(trim(colegio)) = lower(trim(?)) ORDER BY curso",
+            (colegio,),
+        ).fetchall()
     return [fila[0] for fila in filas]
 
 
 def obtener_estudiantes(colegio, curso=None):
-
-    conexion = conectar()
-
-    consulta = """
-        SELECT id, numero_lista, nombre, curso, edad
-        FROM estudiantes
-        WHERE lower(trim(colegio)) = lower(trim(?))
-    """
+    """Filas (id, numero_lista, nombre, curso, edad) del colegio, opcionalmente de un curso."""
+    consulta = (
+        "SELECT id, numero_lista, nombre, curso, edad FROM estudiantes "
+        "WHERE lower(trim(colegio)) = lower(trim(?))"
+    )
     parametros = [colegio]
-
     if curso:
         consulta += " AND curso = ?"
         parametros.append(curso)
-
     consulta += " ORDER BY curso, numero_lista"
 
-    filas = conexion.execute(consulta, parametros).fetchall()
-
-    conexion.close()
-
-    return filas
-
-
-def obtener_estudiante(estudiante_id):
-
-    conexion = conectar()
-
-    fila = conexion.execute(
-        "SELECT id, nombre, colegio, edad, curso, numero_lista FROM estudiantes WHERE id = ?",
-        (estudiante_id,)
-    ).fetchone()
-
-    conexion.close()
-
-    return fila
+    with conectar() as conexion:
+        return conexion.execute(consulta, parametros).fetchall()
 
 
 def obtener_resultados_de(estudiantes_ids):
-
+    """Filas (estudiante_id, materia, tema, porcentaje, fecha) en orden cronológico."""
     if not estudiantes_ids:
         return []
-
-    marcas = ",".join("?" * len(estudiantes_ids))
-
-    conexion = conectar()
-
-    filas = conexion.execute(
-        f"""
-        SELECT estudiante_id, materia, tema, porcentaje, fecha
-        FROM resultados
-        WHERE estudiante_id IN ({marcas})
-        ORDER BY fecha ASC, id ASC
-        """,
-        estudiantes_ids
-    ).fetchall()
-
-    conexion.close()
-
-    return filas
+    with conectar() as conexion:
+        return conexion.execute(
+            "SELECT estudiante_id, materia, tema, porcentaje, fecha FROM resultados "
+            f"WHERE estudiante_id IN ({_marcas(len(estudiantes_ids))}) "
+            "ORDER BY fecha ASC, id ASC",
+            list(estudiantes_ids),
+        ).fetchall()
 
 
 def obtener_planes_de(estudiantes_ids):
-
+    """Filas (estudiante_id, tiempo_disponible, tiempo_usado, beneficio)."""
     if not estudiantes_ids:
         return []
-
-    marcas = ",".join("?" * len(estudiantes_ids))
-
-    conexion = conectar()
-
-    filas = conexion.execute(
-        f"SELECT estudiante_id, tiempo_disponible, tiempo_usado, beneficio FROM planes WHERE estudiante_id IN ({marcas})",
-        estudiantes_ids
-    ).fetchall()
-
-    conexion.close()
-
-    return filas
+    with conectar() as conexion:
+        return conexion.execute(
+            "SELECT estudiante_id, tiempo_disponible, tiempo_usado, beneficio FROM planes "
+            f"WHERE estudiante_id IN ({_marcas(len(estudiantes_ids))})",
+            list(estudiantes_ids),
+        ).fetchall()
 
 
 def obtener_ultimos_dominios_de(estudiantes_ids):
-
+    """Último dominio de cada (estudiante, materia, tema, subtema)."""
     if not estudiantes_ids:
         return []
-
-    marcas = ",".join("?" * len(estudiantes_ids))
-
-    conexion = conectar()
-
-    filas = conexion.execute(
-        f"""
-        SELECT estudiante_id, materia, tema, subtema, dominio
-        FROM progreso_bkt
-        WHERE estudiante_id IN ({marcas})
-        ORDER BY fecha ASC, id ASC
-        """,
-        estudiantes_ids
-    ).fetchall()
-
-    conexion.close()
+    with conectar() as conexion:
+        filas = conexion.execute(
+            "SELECT estudiante_id, materia, tema, subtema, dominio FROM progreso_bkt "
+            f"WHERE estudiante_id IN ({_marcas(len(estudiantes_ids))}) "
+            "ORDER BY fecha ASC, id ASC",
+            list(estudiantes_ids),
+        ).fetchall()
 
     ultimos = {}
-
     for estudiante_id, materia, tema, subtema, dominio in filas:
         ultimos[(estudiante_id, materia, tema, subtema)] = dominio
+    return [(*clave, dominio) for clave, dominio in ultimos.items()]
 
-    return [
-        (estudiante_id, materia, tema, subtema, dominio)
-        for (estudiante_id, materia, tema, subtema), dominio in ultimos.items()
-    ]
-
-
-# ==========================================
-# PRUEBA DIRECTA
-# ==========================================
 
 if __name__ == "__main__":
-
     crear_base_datos()
-
-
-    print(
-        "Base de datos creada correctamente."
-    )
-
-
-    print(
-        "Ruta:",
-        RUTA_BD
-    )
+    print(f"Base de datos lista en {config.RUTA_BD}")

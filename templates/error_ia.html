@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block titulo %}La IA no respondió{% endblock %}
+{% block contenido %}
+
+<section class="tarjeta" style="max-width: 720px; margin: 24px auto">
+    <p class="ceja">IA local</p>
+    <h1 style="margin-bottom: 12px">La IA no pudo crear el contenido</h1>
+    <div class="alerta" role="alert">{{ mensaje }}</div>
+    <p class="suave pequeno" style="margin: 16px 0">
+        TutorIA usa un modelo que corre en este computador con LM Studio. Verifica que
+        LM Studio esté abierto, con el modelo cargado y el servidor local encendido
+        (puerto 1234), y vuelve a intentarlo. Tus datos no se perdieron.
+    </p>
+    <form action="{{ accion }}" method="POST" data-cargando="Intentando de nuevo"
+          data-detalle="La IA está trabajando en tu computador. Puede tardar un poco.">
+        {% for nombre, valor in campos %}
+        <input type="hidden" name="{{ nombre }}" value="{{ valor }}">
+        {% endfor %}
+        <div class="acciones" style="justify-content: flex-start">
+            <button class="boton boton-principal" type="submit">Reintentar</button>
+            <a class="boton boton-claro" href="{{ url_for('inicio') }}">Volver al inicio</a>
+        </div>
+    </form>
+</section>
+
+{% endblock %}

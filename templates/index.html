@@ -23,6 +23,7 @@
 <section class="tarjeta panel-pestana {{ 'activo' if not error_progreso }}" id="panel-evaluacion">
     <h2>Tus datos y el tema</h2>
     <p class="suave pequeno" style="margin-bottom: 18px">Si ya estudiaste antes, usa el mismo colegio, curso y número de lista para continuar donde ibas.</p>
+    {% if error_evaluacion %}<div class="alerta" role="alert">{{ error_evaluacion }}</div>{% endif %}
 
     <form class="formulario" action="{{ url_for('evaluacion') }}" method="POST"
           data-cargando="Creando tu evaluación" data-detalle="La IA está escribiendo 10 preguntas. Puede tardar un poco.">
@@ -65,7 +66,7 @@
 <section class="tarjeta panel-pestana {{ 'activo' if error_progreso }}" id="panel-progreso">
     <h2>Consulta tu progreso</h2>
     <p class="suave pequeno" style="margin-bottom: 18px">Escribe los mismos datos con los que te registraste.</p>
-    {% if error_progreso %}<div class="alerta">{{ error_progreso }}</div>{% endif %}
+    {% if error_progreso %}<div class="alerta" role="alert">{{ error_progreso }}</div>{% endif %}
     <form class="formulario" action="{{ url_for('consultar_progreso') }}" method="POST">
         <div class="campo"><label for="colegio_progreso">Colegio</label><input id="colegio_progreso" name="colegio_progreso" required></div>
         <div class="campo"><label for="curso_progreso">Curso</label><input id="curso_progreso" name="curso_progreso" required></div>

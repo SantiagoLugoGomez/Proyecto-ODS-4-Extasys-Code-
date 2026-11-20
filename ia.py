@@ -1,246 +1,181 @@
-from openai import OpenAI
+"""Conexión con el modelo de lenguaje local (LM Studio).
+
+Es el único módulo que habla con LM Studio. El servidor recibe un esquema JSON y
+restringe la generación a ese formato; aquí además se validan las preguntas y los
+ejercicios antes de mostrarlos. Si la salida no es válida se reintenta; si LM Studio
+no responde se lanza ``ErrorIA`` con un mensaje que la aplicación muestra tal cual.
+"""
+
 import json
+import logging
 import unicodedata
 
+import openai
+from openai import OpenAI
 
-# ==========================================
-# CONEXION CON LM STUDIO
-# ==========================================
+import config
+
+logger = logging.getLogger(__name__)
 
 client = OpenAI(
-    base_url="http://localhost:1234/v1",
-    api_key="lm-studio"
+    base_url=config.LM_STUDIO_URL,
+    api_key="lm-studio",  # LM Studio no valida la clave, pero el cliente exige una.
+    timeout=config.TIEMPO_ESPERA_IA,
 )
 
+MODELO = config.MODELO
 
-MODELO = "qwen2.5-vl-3b-instruct"
+# Preguntas por subtema: 3 + 3 + 2 + 2 = 10.
+PREGUNTAS_POR_SUBTEMA = [3, 3, 2, 2]
+
+TIEMPOS_EJERCICIO = [10, 15, 20]
+
+
+class ErrorIA(Exception):
+    """LM Studio no respondió o no generó contenido válido. El mensaje es para el usuario."""
+
+
+class SalidaInvalida(ValueError):
+    """La respuesta del modelo no cumple las reglas; se puede reintentar."""
 
 
 # ==========================================
-# NORMALIZAR TEXTO
+# SUBTEMAS
 # ==========================================
+
 
 def normalizar_texto(texto):
+    """Minúsculas, sin espacios en los extremos ni tildes: 'Cálculo ' -> 'calculo'."""
+    texto = unicodedata.normalize("NFD", texto.strip().lower())
+    return "".join(c for c in texto if unicodedata.category(c) != "Mn")
 
-    texto = texto.strip().lower()
-
-    texto = unicodedata.normalize(
-        "NFD",
-        texto
-    )
-
-    texto = "".join(
-        caracter
-        for caracter in texto
-        if unicodedata.category(caracter) != "Mn"
-    )
-
-    return texto
-
-
-# ==========================================
-# SUBTEMAS FIJOS
-# ==========================================
 
 SUBTEMAS_FIJOS = {
-
     "calculo diferencial": {
-
-        "limites": [
-            "Limites directos",
-            "Factorizacion",
-            "Racionalizacion",
-            "Limites laterales"
-        ],
-
+        "limites": ["Limites directos", "Factorizacion", "Racionalizacion", "Limites laterales"],
         "derivadas": [
             "Regla de la potencia",
             "Derivadas exponenciales",
             "Derivadas trigonometricas",
-            "Regla de la cadena"
-        ]
+            "Regla de la cadena",
+        ],
     },
-
-
     "ingles": {
-
-        "verb to be": [
-            "Affirmative",
-            "Negative",
-            "Questions",
-            "Short answers"
-        ],
-
-        "present simple": [
-            "Affirmative",
-            "Negative",
-            "Questions",
-            "Third person"
-        ],
-
-        "past simple": [
-            "Regular verbs",
-            "Irregular verbs",
-            "Negative",
-            "Questions"
-        ]
+        "verb to be": ["Affirmative", "Negative", "Questions", "Short answers"],
+        "present simple": ["Affirmative", "Negative", "Questions", "Third person"],
+        "past simple": ["Regular verbs", "Irregular verbs", "Negative", "Questions"],
     },
-
-
     "fisica": {
-
-        "vectores": [
-            "Componentes",
-            "Magnitud",
-            "Producto escalar",
-            "Direccion"
-        ],
-
-        "movimiento": [
-            "Posicion",
-            "Velocidad",
-            "Aceleracion",
-            "Movimiento uniforme"
-        ],
-
-        "leyes de newton": [
-            "Primera ley",
-            "Segunda ley",
-            "Tercera ley",
-            "Fuerza neta"
-        ]
-    }
+        "vectores": ["Componentes", "Magnitud", "Producto escalar", "Direccion"],
+        "movimiento": ["Posicion", "Velocidad", "Aceleracion", "Movimiento uniforme"],
+        "leyes de newton": ["Primera ley", "Segunda ley", "Tercera ley", "Fuerza neta"],
+    },
 }
 
-
-# ==========================================
-# OBTENER SUBTEMAS
-# ==========================================
-
-def obtener_subtemas(
-    materia,
-    tema
-):
-
-    materia_normalizada = normalizar_texto(
-        materia
-    )
-
-    tema_normalizado = normalizar_texto(
-        tema
-    )
+SUBTEMAS_GENERICOS = [
+    "Concepto principal",
+    "Aplicacion",
+    "Interpretacion",
+    "Resolucion de problemas",
+]
 
 
-    if materia_normalizada in SUBTEMAS_FIJOS:
-
-        temas = SUBTEMAS_FIJOS[
-            materia_normalizada
-        ]
-
-
-        if tema_normalizado in temas:
-
-            return temas[
-                tema_normalizado
-            ]
-
-
-    # ======================================
-    # SI EL TEMA NO ESTA REGISTRADO
-    # ======================================
-
-    return [
-        "Concepto principal",
-        "Aplicacion",
-        "Interpretacion",
-        "Resolucion de problemas"
-    ]
+def obtener_subtemas(materia, tema):
+    """Los cuatro subtemas fijos del tema, o cuatro genéricos si el tema no está registrado."""
+    temas = SUBTEMAS_FIJOS.get(normalizar_texto(materia), {})
+    return temas.get(normalizar_texto(tema), SUBTEMAS_GENERICOS)
 
 
 # ==========================================
-# VALIDAR OPCIONES
+# VALIDACIÓN
 # ==========================================
+
 
 def opciones_validas(opciones):
-
+    """Exactamente 4 opciones reales y distintas: ni números sueltos ni textos vacíos."""
     if len(opciones) != 4:
-
         return False
 
+    textos = [str(opcion).strip() for opcion in opciones]
+    if any(texto in {"1", "2", "3", "4"} or len(texto) < 2 for texto in textos):
+        return False
 
-    for opcion in opciones:
-
-        texto = str(
-            opcion
-        ).strip()
-
-
-        if texto in [
-            "1",
-            "2",
-            "3",
-            "4"
-        ]:
-
-            return False
+    return len({normalizar_texto(texto) for texto in textos}) == 4
 
 
-        if len(texto) < 2:
+def validar_pregunta(pregunta):
+    if not str(pregunta.get("pregunta", "")).strip():
+        raise SalidaInvalida("Pregunta sin enunciado.")
+    if not opciones_validas(pregunta.get("opciones", [])):
+        raise SalidaInvalida("LM Studio generó opciones de respuesta inválidas.")
+    correcta = pregunta.get("correcta")
+    if not isinstance(correcta, int) or isinstance(correcta, bool) or not 1 <= correcta <= 4:
+        raise SalidaInvalida("La respuesta correcta debe ser un entero entre 1 y 4.")
 
-            return False
+
+# ==========================================
+# LLAMADA AL MODELO
+# ==========================================
 
 
-    return True
+def _pedir_json(sistema, prompt, esquema, max_tokens):
+    """Pide a LM Studio una respuesta con el esquema dado y la devuelve como diccionario."""
+    try:
+        respuesta = client.chat.completions.create(
+            model=MODELO,
+            messages=[
+                {"role": "system", "content": sistema},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.2,
+            max_tokens=max_tokens,
+            response_format=esquema,
+        )
+    except openai.APITimeoutError as error:
+        raise ErrorIA(
+            "LM Studio tardó demasiado en responder. Revise que el modelo esté cargado "
+            "y vuelva a intentarlo."
+        ) from error
+    except openai.APIConnectionError as error:
+        raise ErrorIA(
+            f"No se pudo conectar con LM Studio en {config.LM_STUDIO_URL}. Abra LM Studio, "
+            f"cargue el modelo {MODELO} y encienda el servidor local."
+        ) from error
+    except openai.APIStatusError as error:
+        raise ErrorIA(
+            f"LM Studio respondió con un error ({error.status_code}). Revise que el modelo "
+            f"{MODELO} esté cargado."
+        ) from error
+
+    texto = respuesta.choices[0].message.content or ""
+    try:
+        return json.loads(texto)
+    except json.JSONDecodeError as error:
+        raise SalidaInvalida("LM Studio no devolvió un JSON válido.") from error
+
+
+def _con_reintentos(generar, descripcion):
+    """Ejecuta ``generar`` hasta ``config.INTENTOS_IA`` veces si la salida es inválida."""
+    intentos = max(1, config.INTENTOS_IA)
+    for intento in range(1, intentos + 1):
+        try:
+            return generar()
+        except SalidaInvalida as error:
+            logger.warning("%s inválidas (intento %d de %d): %s", descripcion, intento,
+                           intentos, error)
+    raise ErrorIA(
+        f"La IA generó {descripcion} inválidas {intentos} veces seguidas. "
+        "Vuelva a intentarlo; si persiste, pruebe con otro tema o nivel."
+    )
 
 
 # ==========================================
 # GENERAR PREGUNTAS
 # ==========================================
 
-def generar_preguntas(
-    materia,
-    tema,
-    nivel
-):
 
-    subtemas = obtener_subtemas(
-        materia,
-        tema
-    )
-
-
-    subtema_1 = subtemas[0]
-    subtema_2 = subtemas[1]
-    subtema_3 = subtemas[2]
-    subtema_4 = subtemas[3]
-
-
-    print(
-        "\n======================================"
-    )
-
-    print(
-        "SUBTEMAS SELECCIONADOS"
-    )
-
-    print(
-        "======================================"
-    )
-
-
-    for subtema in subtemas:
-
-        print(
-            "-",
-            subtema
-        )
-
-
-    # ======================================
-    # PROMPT
-    # ======================================
-
-    prompt = f"""
+def construir_prompt_preguntas(materia, tema, nivel, subtemas):
+    return f"""
 Crea una evaluacion educativa de seleccion multiple.
 
 Materia:
@@ -257,25 +192,25 @@ Debes crear preguntas para estos cuatro subtemas:
 
 
 SUBTEMA 1:
-{subtema_1}
+{subtemas[0]}
 
 Genera exactamente 3 preguntas.
 
 
 SUBTEMA 2:
-{subtema_2}
+{subtemas[1]}
 
 Genera exactamente 3 preguntas.
 
 
 SUBTEMA 3:
-{subtema_3}
+{subtemas[2]}
 
 Genera exactamente 2 preguntas.
 
 
 SUBTEMA 4:
-{subtema_4}
+{subtemas[3]}
 
 Genera exactamente 2 preguntas.
 
@@ -316,324 +251,82 @@ EJEMPLO INCORRECTO:
 """
 
 
-    # ======================================
-    # ESQUEMA DE UNA PREGUNTA
-    # ======================================
-
-    esquema_pregunta = {
-
-        "type": "object",
-
-        "properties": {
-
-            "pregunta": {
-
-                "type": "string",
-
-                "minLength": 5
-            },
-
-            "opciones": {
-
-                "type": "array",
-
-                "minItems": 4,
-
-                "maxItems": 4,
-
-                "items": {
-
-                    "type": "string",
-
-                    "minLength": 2
-                }
-            },
-
-            "correcta": {
-
-                "type": "integer",
-
-                "minimum": 1,
-
-                "maximum": 4
-            }
+ESQUEMA_PREGUNTA = {
+    "type": "object",
+    "properties": {
+        "pregunta": {"type": "string", "minLength": 5},
+        "opciones": {
+            "type": "array",
+            "minItems": 4,
+            "maxItems": 4,
+            "items": {"type": "string", "minLength": 2},
         },
-
-        "required": [
-            "pregunta",
-            "opciones",
-            "correcta"
-        ],
-
-        "additionalProperties": False
-    }
+        "correcta": {"type": "integer", "minimum": 1, "maximum": 4},
+    },
+    "required": ["pregunta", "opciones", "correcta"],
+    "additionalProperties": False,
+}
 
 
-    # ======================================
-    # ESQUEMA COMPLETO
-    # ======================================
-
-    esquema = {
-
-        "type": "json_schema",
-
-        "json_schema": {
-
-            "name": "evaluacion",
-
-            "schema": {
-
-                "type": "object",
-
-                "properties": {
-
-                    "subtema_1": {
-
-                        "type": "array",
-
-                        "minItems": 3,
-
-                        "maxItems": 3,
-
-                        "items": esquema_pregunta
-                    },
-
-                    "subtema_2": {
-
-                        "type": "array",
-
-                        "minItems": 3,
-
-                        "maxItems": 3,
-
-                        "items": esquema_pregunta
-                    },
-
-                    "subtema_3": {
-
-                        "type": "array",
-
-                        "minItems": 2,
-
-                        "maxItems": 2,
-
-                        "items": esquema_pregunta
-                    },
-
-                    "subtema_4": {
-
-                        "type": "array",
-
-                        "minItems": 2,
-
-                        "maxItems": 2,
-
-                        "items": esquema_pregunta
-                    }
-                },
-
-                "required": [
-                    "subtema_1",
-                    "subtema_2",
-                    "subtema_3",
-                    "subtema_4"
-                ],
-
-                "additionalProperties": False
-            }
+def esquema_evaluacion():
+    propiedades = {
+        f"subtema_{i}": {
+            "type": "array",
+            "minItems": cantidad,
+            "maxItems": cantidad,
+            "items": ESQUEMA_PREGUNTA,
         }
+        for i, cantidad in enumerate(PREGUNTAS_POR_SUBTEMA, start=1)
+    }
+    return {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "evaluacion",
+            "schema": {
+                "type": "object",
+                "properties": propiedades,
+                "required": list(propiedades),
+                "additionalProperties": False,
+            },
+        },
     }
 
 
-    # ======================================
-    # PEDIR RESPUESTA A LM STUDIO
-    # ======================================
+def generar_preguntas(materia, tema, nivel):
+    """Genera y valida las 10 preguntas de la evaluación (RF-02).
 
-    respuesta = client.chat.completions.create(
+    Devuelve una lista de diccionarios con ``pregunta``, ``opciones``, ``correcta``
+    (1 a 4) y ``subtema``. Lanza ``ErrorIA`` si no se logra una evaluación válida.
+    """
+    subtemas = obtener_subtemas(materia, tema)
+    prompt = construir_prompt_preguntas(materia, tema, nivel, subtemas)
 
-        model=MODELO,
-
-        messages=[
-
-            {
-                "role": "system",
-
-                "content": (
-                    "Eres un tutor educativo experto "
-                    "en crear evaluaciones de seleccion "
-                    "multiple. Debes crear opciones "
-                    "reales y educativas."
-                )
-            },
-
-            {
-                "role": "user",
-
-                "content": prompt
-            }
-        ],
-
-        temperature=0.2,
-
-        max_tokens=3000,
-
-        response_format=esquema
-    )
-
-
-    texto = (
-        respuesta
-        .choices[0]
-        .message
-        .content
-    )
-
-
-    datos = json.loads(
-        texto
-    )
-
-
-    # ======================================
-    # CONVERTIR TODO A UNA LISTA
-    # ======================================
-
-    preguntas = []
-
-
-    # ======================================
-    # SUBTEMA 1
-    # ======================================
-
-    for pregunta in datos[
-        "subtema_1"
-    ]:
-
-        pregunta[
-            "subtema"
-        ] = subtema_1
-
-        preguntas.append(
-            pregunta
+    def intentar():
+        datos = _pedir_json(
+            "Eres un tutor educativo experto en crear evaluaciones de seleccion multiple. "
+            "Debes crear opciones reales y educativas.",
+            prompt,
+            esquema_evaluacion(),
+            max_tokens=3000,
         )
+        preguntas = []
+        for i, (subtema, cantidad) in enumerate(zip(subtemas, PREGUNTAS_POR_SUBTEMA), start=1):
+            grupo = datos.get(f"subtema_{i}")
+            if not isinstance(grupo, list) or len(grupo) != cantidad:
+                raise SalidaInvalida(f"El subtema {i} no tiene {cantidad} preguntas.")
+            for pregunta in grupo:
+                validar_pregunta(pregunta)
+                preguntas.append({
+                    "pregunta": pregunta["pregunta"].strip(),
+                    "opciones": [str(opcion).strip() for opcion in pregunta["opciones"]],
+                    "correcta": pregunta["correcta"],
+                    "subtema": subtema,
+                })
+        return preguntas
 
-
-    # ======================================
-    # SUBTEMA 2
-    # ======================================
-
-    for pregunta in datos[
-        "subtema_2"
-    ]:
-
-        pregunta[
-            "subtema"
-        ] = subtema_2
-
-        preguntas.append(
-            pregunta
-        )
-
-
-    # ======================================
-    # SUBTEMA 3
-    # ======================================
-
-    for pregunta in datos[
-        "subtema_3"
-    ]:
-
-        pregunta[
-            "subtema"
-        ] = subtema_3
-
-        preguntas.append(
-            pregunta
-        )
-
-
-    # ======================================
-    # SUBTEMA 4
-    # ======================================
-
-    for pregunta in datos[
-        "subtema_4"
-    ]:
-
-        pregunta[
-            "subtema"
-        ] = subtema_4
-
-        preguntas.append(
-            pregunta
-        )
-
-
-    # ======================================
-    # VALIDAR OPCIONES
-    # ======================================
-
-    for pregunta in preguntas:
-
-        if not opciones_validas(
-            pregunta[
-                "opciones"
-            ]
-        ):
-
-            raise RuntimeError(
-                "LM Studio genero opciones "
-                "de respuesta invalidas."
-            )
-
-
-    # ======================================
-    # MOSTRAR DISTRIBUCION
-    # ======================================
-
-    print(
-        "\n======================================"
-    )
-
-    print(
-        "DISTRIBUCION DE SUBTEMAS"
-    )
-
-    print(
-        "======================================"
-    )
-
-
-    print(
-        "-",
-        subtema_1,
-        ": 3 preguntas"
-    )
-
-    print(
-        "-",
-        subtema_2,
-        ": 3 preguntas"
-    )
-
-    print(
-        "-",
-        subtema_3,
-        ": 2 preguntas"
-    )
-
-    print(
-        "-",
-        subtema_4,
-        ": 2 preguntas"
-    )
-
-
-    print(
-        "\nEvaluacion generada correctamente."
-    )
-
-
+    logger.info("Generando evaluación: %s / %s / %s", materia, tema, nivel)
+    preguntas = _con_reintentos(intentar, "preguntas")
+    logger.info("Evaluación generada: %d preguntas en %s", len(preguntas), ", ".join(subtemas))
     return preguntas
 
 
@@ -641,20 +334,10 @@ EJEMPLO INCORRECTO:
 # GENERAR EJERCICIOS DE REFUERZO
 # ==========================================
 
-def generar_ejercicios_refuerzo(
-    materia,
-    tema,
-    nivel,
-    subtemas
-):
 
-    cantidad = len(
-        subtemas
-    )
-
-
-    prompt = f"""
-Genera exactamente {cantidad}
+def construir_prompt_ejercicios(materia, tema, nivel, subtemas):
+    return f"""
+Genera exactamente {len(subtemas)}
 ejercicios de practica.
 
 Materia:
@@ -687,202 +370,70 @@ REGLAS:
 """
 
 
-    esquema = {
-
+def esquema_ejercicios(subtemas):
+    return {
         "type": "json_schema",
-
         "json_schema": {
-
             "name": "ejercicios_refuerzo",
-
             "schema": {
-
                 "type": "object",
-
                 "properties": {
-
                     "ejercicios": {
-
                         "type": "array",
-
-                        "minItems": cantidad,
-
-                        "maxItems": cantidad,
-
+                        "minItems": len(subtemas),
+                        "maxItems": len(subtemas),
                         "items": {
-
                             "type": "object",
-
                             "properties": {
-
-                                "nombre": {
-
-                                    "type": "string"
-                                },
-
-                                "ejercicio": {
-
-                                    "type": "string"
-                                },
-
-                                "subtema": {
-
-                                    "type": "string",
-
-                                    "enum": subtemas
-                                },
-
-                                "tiempo": {
-
-                                    "type": "integer",
-
-                                    "enum": [
-                                        10,
-                                        15,
-                                        20
-                                    ]
-                                }
+                                "nombre": {"type": "string"},
+                                "ejercicio": {"type": "string"},
+                                "subtema": {"type": "string", "enum": list(subtemas)},
+                                "tiempo": {"type": "integer", "enum": TIEMPOS_EJERCICIO},
                             },
-
-                            "required": [
-                                "nombre",
-                                "ejercicio",
-                                "subtema",
-                                "tiempo"
-                            ],
-
-                            "additionalProperties": False
-                        }
+                            "required": ["nombre", "ejercicio", "subtema", "tiempo"],
+                            "additionalProperties": False,
+                        },
                     }
                 },
-
-                "required": [
-                    "ejercicios"
-                ],
-
-                "additionalProperties": False
-            }
-        }
+                "required": ["ejercicios"],
+                "additionalProperties": False,
+            },
+        },
     }
 
 
-    respuesta = client.chat.completions.create(
+def generar_ejercicios_refuerzo(materia, tema, nivel, subtemas):
+    """Genera un ejercicio de 10, 15 o 20 minutos por subtema (RF-04)."""
+    subtemas = list(subtemas)
+    prompt = construir_prompt_ejercicios(materia, tema, nivel, subtemas)
 
-        model=MODELO,
+    def intentar():
+        datos = _pedir_json(
+            "Eres un tutor educativo que genera ejercicios de refuerzo personalizados.",
+            prompt,
+            esquema_ejercicios(subtemas),
+            max_tokens=1200,
+        )
+        ejercicios = datos.get("ejercicios")
+        if not isinstance(ejercicios, list):
+            raise SalidaInvalida("La respuesta no trae la lista de ejercicios.")
+        if sorted(e.get("subtema", "") for e in ejercicios) != sorted(subtemas):
+            raise SalidaInvalida("No hay exactamente un ejercicio por subtema.")
+        for e in ejercicios:
+            if e.get("tiempo") not in TIEMPOS_EJERCICIO:
+                raise SalidaInvalida("El tiempo de un ejercicio no es 10, 15 o 20 minutos.")
+            if not str(e.get("nombre", "")).strip() or not str(e.get("ejercicio", "")).strip():
+                raise SalidaInvalida("Un ejercicio no tiene nombre o enunciado.")
+        return ejercicios
 
-        messages=[
+    logger.info("Generando ejercicios de refuerzo para %d subtemas", len(subtemas))
+    return _con_reintentos(intentar, "ejercicios")
 
-            {
-                "role": "system",
-
-                "content": (
-                    "Eres un tutor educativo "
-                    "que genera ejercicios "
-                    "de refuerzo personalizados."
-                )
-            },
-
-            {
-                "role": "user",
-
-                "content": prompt
-            }
-        ],
-
-        temperature=0.2,
-
-        max_tokens=1200,
-
-        response_format=esquema
-    )
-
-
-    texto = (
-        respuesta
-        .choices[0]
-        .message
-        .content
-    )
-
-
-    datos = json.loads(
-        texto
-    )
-
-
-    return datos[
-        "ejercicios"
-    ]
-
-
-# ==========================================
-# PRUEBA DIRECTA
-# ==========================================
 
 if __name__ == "__main__":
-
-    preguntas = generar_preguntas(
-        "Ingles",
-        "verb to be",
-        "Basico"
-    )
-
-
-    print(
-        "\n======================================"
-    )
-
-    print(
-        "PREGUNTAS GENERADAS"
-    )
-
-    print(
-        "======================================"
-    )
-
-
-    for numero, pregunta in enumerate(
-        preguntas,
-        start=1
-    ):
-
-        print(
-            "\nPregunta",
-            numero
-        )
-
-
-        print(
-            pregunta[
-                "pregunta"
-            ]
-        )
-
-
-        for numero_opcion, opcion in enumerate(
-            pregunta[
-                "opciones"
-            ],
-            start=1
-        ):
-
-            print(
-                str(numero_opcion) + ".",
-                opcion
-            )
-
-
-        print(
-            "Correcta:",
-            pregunta[
-                "correcta"
-            ]
-        )
-
-
-        print(
-            "Subtema:",
-            pregunta[
-                "subtema"
-            ]
-        )
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    for numero, p in enumerate(generar_preguntas("Ingles", "verb to be", "Basico"), start=1):
+        print(f"\n{numero}. [{p['subtema']}] {p['pregunta']}")
+        for letra, opcion in zip("ABCD", p["opciones"]):
+            print(f"   {letra}. {opcion}")
+        print(f"   Correcta: {'ABCD'[p['correcta'] - 1]}")

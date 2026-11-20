@@ -1,31 +1,11 @@
-# ==========================================
-# CALCULO DEL BENEFICIO
-# ==========================================
+"""Beneficio de reforzar un subtema (ecuación 4 del paper)."""
 
 
-def calcular_beneficio(
-    probabilidad_dominio
-):
+def calcular_beneficio(probabilidad_dominio: float) -> float:
+    """b = 10 (1 - P): entre 0 y 10. Mientras menos domine el subtema, más vale reforzarlo."""
+    return (1 - probabilidad_dominio) * 10
 
-    beneficio = (
-        1 - probabilidad_dominio
-    ) * 10
-
-    return beneficio
-
-
-# ==========================================
-# PRUEBA
-# ==========================================
 
 if __name__ == "__main__":
-
-    dominio = 0.20
-
-    beneficio = calcular_beneficio(
-        dominio
-    )
-
-    print("Dominio:", dominio)
-
-    print("Beneficio:", beneficio)
+    for dominio in [0.9893, 0.5, 0.1273]:
+        print(f"Dominio {dominio:.4f} -> beneficio {calcular_beneficio(dominio):.2f}")

@@ -1,0 +1,7 @@
+# Desarrollo: pruebas, estilo y reproducción de la evaluación del paper
+-r requirements.txt
+pytest>=8.0
+ruff>=0.6
+scipy>=1.11
+numpy>=1.26
+matplotlib>=3.8

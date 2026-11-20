@@ -1,0 +1,21 @@
+# Configuración de las herramientas de desarrollo. La aplicación se instala con
+# requirements.txt y se ejecuta con `python app.py`.
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "C4"]
+ignore = ["SIM108", "B905"]
+
+[tool.ruff.lint.isort]
+known-first-party = [
+    "app", "base_datos", "beneficio", "bkt", "config", "ia", "indicadores", "mochila",
+    "simulacion",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+filterwarnings = ["error::DeprecationWarning:app", "error::DeprecationWarning:ia"]

@@ -269,7 +269,7 @@ Las 54 pruebas no necesitan LM Studio (usan un generador falso y una base tempor
 
 ## Límites y trabajo futuro
 
-- Los resultados de aprendizaje dependen del modelo de estudiante simulado; con 25 estudiantes por grupo la comparación directa tiene poca potencia. El siguiente paso es un **piloto con estudiantes reales** y varias sesiones.
+
 - El tiempo de generación y el porcentaje de evaluaciones válidas (P-04) deben medirse en el equipo con el modelo: ya está el script para hacerlo.
 - Si LM Studio no responde, la evaluación no se crea (la aplicación lo informa y permite reintentar). Un **banco local de preguntas**, que además evite repetir preguntas, es el siguiente paso.
 - LM Studio y el modelo todavía se instalan a mano.

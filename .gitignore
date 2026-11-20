@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Datos locales de TutorIA: base de datos y clave de las sesiones
+data/
+
+# Datos intermedios de la simulación que se regeneran
+simulacion/resultados/*.db
+
+# Sistema operativo y editores
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
